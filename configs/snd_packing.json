@@ -1,0 +1,32 @@
+{
+    "packing_size": 8,
+    "positive_ratio": 0.4,
+
+    "warmup_ratio": 0.1,
+    "lr_scheduler_type": "cosine",
+    "learning_rate":5e-5,
+
+    "output_dir": "/data/name_disambiguation/model/SNDPacking",
+    "per_device_train_batch_size": 1,
+    "num_train_epochs": 1,
+    "save_steps": 1,
+    "save_total_limit": 10,
+
+    "evaluation_strategy": "steps",
+    "eval_steps": 1,
+    "load_best_model_at_end": false,
+    "metric_for_best_model": "avg_f1",
+    "remove_unused_columns": false,
+
+    "logging_steps": 1,
+    "logging_dir": "/data/name_disambiguation/model/SNDPacking/logs",
+    "bf16": true,
+
+    "gradient_accumulation_steps": 1,
+
+    "report_to": "wandb",
+    "run_name": "SNDPacking",
+    "deepspeed": "/data/name_disambiguation/configs/ds_configs/ds_zero_3_offload.json",
+
+    "resume_from_checkpoint": "/data/name_disambiguation/model/SNDPacking/checkpoint-1"
+}
