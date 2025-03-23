@@ -3,6 +3,7 @@ from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
+
 from transformers import Qwen2Model, Qwen2PreTrainedModel
 from transformers.utils import ModelOutput
 
@@ -16,8 +17,6 @@ class SNDOutputWithPast(ModelOutput):
 
 
 class Qwen2ModelForSNDPubEmbedding(Qwen2PreTrainedModel):
-    _tied_weights_keys = ["lm_head.weight"]
-
     def __init__(self, config):
         super().__init__(config)
         self.model = Qwen2Model(config)

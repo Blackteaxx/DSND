@@ -8,6 +8,36 @@ from .logger import get_logger
 
 logger = get_logger(__name__)
 
+def hybrid_evaluate(
+    author_embeddings: Dict[str, np.ndarray],
+    author_labels: Dict[str, np.ndarray],
+):
+    best_results = {
+        "db_eps": None,
+        "db_min": None,
+        "avg_f1": 0,
+        "predict_results": None
+    }
+    
+    db_eps_list = [1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2]
+    db_min_list = [5, 10, 15, 20, 25]
+    
+    for db_eps in db_eps_list:
+        for db_min in db_min_list:
+            avg_f1, predict_results = compute_pairwise_f1(
+                author_embeddings, author_labels, db_eps, db_min
+            )
+            if avg_f1 > best_results["avg_f1"]:
+                best_results["db_eps"] = db_eps
+                best_results["avg_f1"] = avg_f1
+                best_results["predict_results"] = predict_results
+
+    logger.info(
+        f"Best DBSCAN parameters: eps={best_results['db_eps']}, min_samples={best_results['db_min']}"
+    )
+    logger.info(f"Best Pairwise F1: {best_results['avg_f1']:.4f}")
+
+    return best_results
 
 def compute_pairwise_f1(
     author_embeddings: Dict[str, np.ndarray],
@@ -16,6 +46,7 @@ def compute_pairwise_f1(
     db_min: int = 5,
 ):
     predict_results = {}
+    
     for author_name in author_embeddings:
         embeddings = author_embeddings[author_name]
 
@@ -67,8 +98,9 @@ def evaluate(predict_dict, true_dict):
             continue
 
         if len(np.unique(true_labels)) == 1:
-            logger.warning(f"Warning: All samples same class for {author}")
-            continue
+            # logger.warning(f"Warning: All samples same class for {author}")
+            # continue
+            pass
 
         # 计算指标
         precision, recall, f1 = pairwise_evaluate(true_labels, pred_labels)
@@ -76,18 +108,18 @@ def evaluate(predict_dict, true_dict):
         valid_authors += 1
 
         # 打印详细结果
-        logger.info(
-            f"[{author}] Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1:.4f}"
-        )
+        # logger.info(
+        #     f"[{author}] Precision: {precision:.4f}, Recall: {recall:.4f}, F1: {f1:.4f}"
+        # )
 
     if valid_authors == 0:
         logger.error("No valid authors for evaluation")
         return 0
 
     avg_f1 = total_f1 / valid_authors
-    logger.info(
-        f"\nAverage Pairwise F1: {avg_f1:.4f} ({valid_authors} authors evaluated)"
-    )
+    # logger.info(
+    #     f"\nAverage Pairwise F1: {avg_f1:.4f} ({valid_authors} authors evaluated)"
+    # )
     return avg_f1
 
 

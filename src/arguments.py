@@ -36,6 +36,18 @@ class DataArguments:
         metadata={"help": "The positive ratio of the dataset."},
     )
 
+@dataclass
+class ModelArguments:
+    model_name_or_path: str = field(
+        default="bert-base-uncased",
+        metadata={"help": "The model checkpoint for weights initialization."},
+    )
+    
+    padding_side: str = field(
+        default="left",
+        metadata={"help": "The padding side of the tokenizer."},
+    )
+
 
 @dataclass
 class SNDTrainingArguments(TrainingArguments):

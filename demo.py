@@ -1,27 +1,41 @@
+from argparse import ArgumentParser
+
 import torch
 from peft import LoraConfig, get_peft_model
+from src.arguments import DataArguments, ModelArguments, SNDTrainingArguments
+from src.dataset import SNDPackingCollator, SNDPackingDataset
+from src.modeling import Qwen2ModelForSNDPubEmbedding
+from src.trainer import SNDTrainer
+from src.utils.logger import get_logger
+
 from transformers import (
     AutoTokenizer,
     BitsAndBytesConfig,
     HfArgumentParser,
 )
 
-from src.arguments import DataArguments, SNDTrainingArguments
-from src.dataset import SNDPackingCollator, SNDPackingDataset
-from src.modeling import Qwen2ModelForSNDPubEmbedding
-from src.trainer import SNDTrainer
-from src.utils.logger import get_logger
-
 logger = get_logger(__name__)
+parser = ArgumentParser()
 
-data_args, training_args = HfArgumentParser(
-    (DataArguments, SNDTrainingArguments)
-).parse_json_file("/data/name_disambiguation/configs/snd_packing.json")
+parser.add_argument(
+    "--config",
+    type=str,
+    required=True,
+    help="The path to the config file.",
+)
+
+args = parser.parse_args()
+
+config_path = args.config
+
+data_args, model_args, training_args = HfArgumentParser(
+    (DataArguments, ModelArguments, SNDTrainingArguments)
+).parse_json_file(config_path)
 
 tokenizer = AutoTokenizer.from_pretrained(
-    "/data/name_disambiguation/model/Qwen/Qwen2.5-7B"
+    model_args.model_name_or_path,
 )
-tokenizer.padding_side = "left"
+tokenizer.padding_side = model_args.padding_side
 
 train_dataset = SNDPackingDataset(
     data_args=data_args,
@@ -46,10 +60,10 @@ bnb_config = BitsAndBytesConfig(
 )
 
 model = Qwen2ModelForSNDPubEmbedding.from_pretrained(
-    "/data/name_disambiguation/model/Qwen/Qwen2.5-7B",
-    # quantization_config=bnb_config,
+    model_args.model_name_or_path,
+    quantization_config=bnb_config,
     trust_remote_code=True,
-    # attn_implementation="flash_attention_2",
+    attn_implementation="flash_attention_2",
 )
 
 modules_to_save = []
@@ -80,12 +94,11 @@ for name, param in model.named_parameters():
     if "lora" in name:
         param.requires_grad = True
 
-model.print_trainable_parameters()
-
-# for name, param in model.named_parameters():
-#     if "lora" in name:
-#         logger.info(name)
-#         logger.info(param.data.shape)
+if torch.distributed.is_initialized():
+    if torch.distributed.get_rank() == 0:
+        model.print_trainable_parameters()
+else:
+    model.print_trainable_parameters()
 
 
 def verify_lora_weights(model):
@@ -112,15 +125,19 @@ def verify_lora_weights(model):
 
 
 # 使用方法
-is_valid = verify_lora_weights(model)
-if not is_valid:
-    raise ValueError("LoRA权重未正确初始化！请检查配置")
+if torch.distributed.is_initialized():
+    if torch.distributed.get_rank() == 0:
+        is_valid = verify_lora_weights(model)
+        if not is_valid:
+            raise ValueError("LoRA权重未正确初始化！请检查配置")
+else:
+    is_valid = verify_lora_weights(model)
+    if not is_valid:
+        raise ValueError("LoRA权重未正确初始化！请检查配置")
 
 
 model.gradient_checkpointing_enable()
 model.enable_input_require_grads()
-
-# model.train()
 
 
 # 在开始训练前添加这段代码
@@ -128,15 +145,6 @@ def log_grad_hook(module, grad_input, grad_output):
     if hasattr(module, "_name") and "lora" in module._name:
         logger.info(f"模块 {module._name} 梯度范数: {grad_output[0].norm().item():.4e}")
 
-
-# 为模型的关键部分注册钩子
-# for name, module in model.named_modules():
-#     if any(target in name for target in target_modules) and "lora" in name:
-#         module._name = name  # 存储名称以便在钩子中使用
-#         module.register_full_backward_hook(log_grad_hook)
-
-
-# logger.info(model.state_dict().keys())
 
 trainer = SNDTrainer(
     model=model,
@@ -147,5 +155,5 @@ trainer = SNDTrainer(
     eval_dataset=eval_dataset,
 )
 
-trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
-# trainer.train()
+# trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
+trainer.train()
