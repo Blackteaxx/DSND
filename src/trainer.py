@@ -4,20 +4,17 @@ from typing import Dict, List, Optional
 
 import numpy as np
 import torch
-import torch.distributed as dist
-import torch.nn.functional as F
-from torch import nn
 from torch.utils.data import Dataset
 from tqdm import tqdm
+
 from transformers import Trainer
 from transformers.integrations.deepspeed import deepspeed_init
 from transformers.trainer_pt_utils import find_batch_size
 from transformers.trainer_utils import has_length
 
-from .utils.evaluate import compute_pairwise_f1, hybrid_evaluate
-from .utils.logger import get_logger
 from .criterion import ContrastiveLossCalculator
-
+from .utils.evaluate import hybrid_evaluate
+from .utils.logger import get_logger
 
 logger = get_logger(__name__)
 
@@ -155,9 +152,10 @@ class SNDTrainer(Trainer):
                 )
 
             best_results = hybrid_evaluate(
-                author_embeddings, author_labels, self.args.db_eps, self.args.db_min
+                author_embeddings=author_embeddings,
+                author_labels=author_labels,
             )
-            
+
             avg_f1 = best_results["avg_f1"]
             predict_results = best_results["predict_results"]
             db_eps = best_results["db_eps"]

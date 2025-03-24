@@ -6,7 +6,7 @@ from src.arguments import DataArguments, ModelArguments, SNDTrainingArguments
 from src.dataset import SNDPackingCollator, SNDPackingDataset
 from src.modeling import Qwen2ModelForSNDPubEmbedding
 from src.trainer import SNDTrainer
-from src.utils.logger import get_logger
+from src.utils.logger import distributed_logging, get_logger
 
 from transformers import (
     AutoTokenizer,
@@ -32,6 +32,15 @@ data_args, model_args, training_args = HfArgumentParser(
     (DataArguments, ModelArguments, SNDTrainingArguments)
 ).parse_json_file(config_path)
 
+
+distributed_logging(
+    logger,
+    f"Data Arguments: {data_args}",
+    f"Model Arguments: {model_args}",
+    f"Training Arguments: {training_args}",
+)
+
+
 tokenizer = AutoTokenizer.from_pretrained(
     model_args.model_name_or_path,
 )
@@ -48,8 +57,6 @@ eval_dataset = SNDPackingDataset(
     tokenizer=tokenizer,
     mode="dev",
 )
-
-logger.info(eval_dataset[0])
 
 
 bnb_config = BitsAndBytesConfig(
@@ -124,7 +131,6 @@ def verify_lora_weights(model):
     return len(valid_weights) > 0
 
 
-# 使用方法
 if torch.distributed.is_initialized():
     if torch.distributed.get_rank() == 0:
         is_valid = verify_lora_weights(model)
@@ -143,7 +149,12 @@ model.enable_input_require_grads()
 # 在开始训练前添加这段代码
 def log_grad_hook(module, grad_input, grad_output):
     if hasattr(module, "_name") and "lora" in module._name:
-        logger.info(f"模块 {module._name} 梯度范数: {grad_output[0].norm().item():.4e}")
+        distributed_logging(
+            logger,
+            f"Module: {module._name}",
+            f"Grad Input: {grad_input}",
+            f"Grad Output: {grad_output}",
+        )
 
 
 trainer = SNDTrainer(

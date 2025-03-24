@@ -8,6 +8,7 @@ from .logger import get_logger
 
 logger = get_logger(__name__)
 
+
 def hybrid_evaluate(
     author_embeddings: Dict[str, np.ndarray],
     author_labels: Dict[str, np.ndarray],
@@ -16,12 +17,12 @@ def hybrid_evaluate(
         "db_eps": None,
         "db_min": None,
         "avg_f1": 0,
-        "predict_results": None
+        "predict_results": None,
     }
-    
+
     db_eps_list = [1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2]
-    db_min_list = [5, 10, 15, 20, 25]
-    
+    db_min_list = list(range(2, 21))
+
     for db_eps in db_eps_list:
         for db_min in db_min_list:
             avg_f1, predict_results = compute_pairwise_f1(
@@ -29,6 +30,7 @@ def hybrid_evaluate(
             )
             if avg_f1 > best_results["avg_f1"]:
                 best_results["db_eps"] = db_eps
+                best_results["db_min"] = db_min
                 best_results["avg_f1"] = avg_f1
                 best_results["predict_results"] = predict_results
 
@@ -39,6 +41,7 @@ def hybrid_evaluate(
 
     return best_results
 
+
 def compute_pairwise_f1(
     author_embeddings: Dict[str, np.ndarray],
     author_labels: Dict[str, np.ndarray],
@@ -46,7 +49,7 @@ def compute_pairwise_f1(
     db_min: int = 5,
 ):
     predict_results = {}
-    
+
     for author_name in author_embeddings:
         embeddings = author_embeddings[author_name]
 
@@ -130,7 +133,7 @@ def pairwise_evaluate(correct_labels, pred_labels):
 
     # iterate over all pairs of papers (i, j)
     # and compute metrics based on the pairs
-    # so the metrics are not affected by the numerics of clusters
+    # so the metrics are not affected by the numbers of clusters
     for i in range(len(correct_labels)):
         for j in range(i + 1, len(correct_labels)):
             if correct_labels[i] == correct_labels[j]:
