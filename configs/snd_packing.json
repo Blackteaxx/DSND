@@ -2,8 +2,10 @@
     "model_name_or_path": "/data/name_disambiguation/model/Qwen/Qwen2.5-3B-Instruct",
     "padding_side": "left",
 
-    "packing_size": 16,
-    "positive_ratio": 0.5,
+    "packing_size": 24,
+    "positive_num": 16,
+
+    "do_predict": true,
 
     "warmup_ratio": 0.1,
     "lr_scheduler_type": "cosine",
@@ -11,9 +13,10 @@
 
     "output_dir": "/data/name_disambiguation/model/SNDPacking",
     "per_device_train_batch_size": 1,
+    "per_device_eval_batch_size": 1,
     "num_train_epochs": 1,
     "save_steps": 200,
-    "save_total_limit": 100,
+    "save_total_limit": 200,
 
     "evaluation_strategy": "steps",
     "eval_steps": 200,
@@ -25,11 +28,9 @@
     "logging_dir": "/data/name_disambiguation/model/SNDPacking/logs",
     "bf16": true,
 
-    "gradient_accumulation_steps": 4,
+    "gradient_accumulation_steps": 1,
 
-    "report_to": "wandb",
-    "run_name": "SNDPackingFull",
-    "deepspeed": "/data/name_disambiguation/configs/ds_configs/ds_zero_2.json",
+    "deepspeed": "/data/name_disambiguation/configs/ds_configs/ds_zero_3.json",
 
     "resume_from_checkpoint": "/data/name_disambiguation/model/SNDPacking/checkpoint-1"
 }

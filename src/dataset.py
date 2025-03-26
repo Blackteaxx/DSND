@@ -11,6 +11,7 @@ from transformers import PreTrainedTokenizer
 from .arguments import DataArguments
 from .utils.hierarchical_sampler import HierarchicalSampler
 from .utils.logger import get_logger
+from .utils.prompt_template import format_paper_for_llm
 
 VALID_MODES = ["train", "dev", "valid", "test"]
 
@@ -93,10 +94,11 @@ class SNDPackingDataset(Dataset):
         if self.mode == "train":
             # packing: "text_feature", "label"
             self.sampler = HierarchicalSampler(
-                self.names_pub,
-                author_pub_labels,
-                data_args.packing_size,
-                data_args.positive_ratio,
+                names_pub=self.names_pub,
+                author_pub_labels=author_pub_labels,
+                packing_size=data_args.packing_size,
+                positive_ratio=data_args.positive_ratio,
+                positive_num=data_args.positive_num,
             )
             pubs_packing_data = self.sampler.sampling()
             for packing_data in tqdm(
@@ -162,7 +164,7 @@ class SNDPackingDataset(Dataset):
 
         papers_dict = self.names_pub[author_name]
         paper_dict = papers_dict[pub]
-        text_feature = self._format_paper_for_llm(paper_dict, author_name)
+        text_feature = format_paper_for_llm(paper_dict, author_name)
 
         features = {"text_feature": text_feature}
 
@@ -170,48 +172,61 @@ class SNDPackingDataset(Dataset):
             features["label"] = self.labels[pub]
         return features
 
-    def _format_paper_for_llm(self, paper_dict: dict, author_name: str):
-        """将论文字典转换为LLM友好的结构化文本
 
-        Args:
-            paper_dict: 包含论文元数据的字典
+class SNDInferenceDataset(Dataset):
+    def __init__(self, tokenizer: PreTrainedTokenizer, data_args: DataArguments):
+        self.tokenizer = tokenizer
+        self.data_args = data_args
 
-        Returns:
-            str: 适合LLM处理的自然语言格式文本
-        """
-        components = []
+        with open(os.path.join(data_args.names_pub_dir, "valid.json"), "r") as f:
+            self.valid_names_pub = json.load(f)
 
-        prompt = "Given the following related infomation of the research paper: {}. Use one word to describe the research paper to separate it from others."
+        unpacked_data = []
+        for author_name, pubs in tqdm(
+            self.valid_names_pub.items(), desc="Constructing the inference features"
+        ):
+            for pub in pubs:
+                papar_dict = pubs[pub]
+                features = self._get_features(papar_dict, author_name)
+                unpacked_data.append(features)
 
-        # 1. 标题与作者信息强化
-        components.append(f"Research Paper Title: {paper_dict['title']}")
-        components.append("\nMain Author: " + author_name)
-        components.append("\nAuthors:")
-        components.extend(
-            [
-                f"- {author['name']} ({author['org'].rstrip(', ')})"
-                for author in paper_dict["authors"]
-            ]
+        self.data = []
+        for i in range(0, len(unpacked_data), data_args.packing_size):
+            self.data.append(unpacked_data[i : i + data_args.packing_size])
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, index):
+        data = self.data[index]
+
+        text_features = [d["text_feature"] for d in data]
+
+        # Tokenize the text features
+        tokenized_text_features = self.tokenizer(
+            text_features,
+            padding=True,
+            truncation=True,
+            max_length=2048,
+            return_tensors="pt",
+        )
+        input_ids, attention_mask = (
+            tokenized_text_features["input_ids"],
+            tokenized_text_features["attention_mask"],
         )
 
-        # 2. 摘要结构化处理
-        components.append("\nAbstract:")
-        components.append(
-            paper_dict["abstract"].replace("(Turcz.)", "")
-        )  # 清理特殊符号
+        batch = {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+        }
 
-        # 3. 关键词增强表示
-        components.append("\nKey Terms:")
-        components.append("; ".join([f"[{kw}]" for kw in paper_dict["keywords"]]))
+        batch["author_names"] = [d["author_name"] for d in data]
+        batch["pub_ids"] = [d["pub_id"] for d in data]
+        return batch
 
-        # 4. 元数据整合
-        metadata = []
-        if "venue" in paper_dict:
-            metadata.append(f"Published in: {paper_dict['venue']}")
-        if "year" in paper_dict:
-            metadata.append(f"Year: {paper_dict['year']}")
-        if metadata:
-            components.append("\n" + " | ".join(metadata))
-
-        pub_info = "\n".join(components)
-        return prompt.format(pub_info)
+    def _get_features(self, paper_dict, author_name):
+        text_feature = format_paper_for_llm(paper_dict, author_name)
+        features = {"text_feature": text_feature}
+        features["author_name"] = author_name
+        features["pub_id"] = paper_dict["id"]
+        return features

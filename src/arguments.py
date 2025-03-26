@@ -32,9 +32,15 @@ class DataArguments:
     )
 
     positive_ratio: float = field(
-        default=0.5,
+        default=None,
         metadata={"help": "The positive ratio of the dataset."},
     )
+
+    positive_num: int = field(
+        default=None,
+        metadata={"help": "The positive number of the dataset."},
+    )
+
 
 @dataclass
 class ModelArguments:
@@ -42,7 +48,7 @@ class ModelArguments:
         default="bert-base-uncased",
         metadata={"help": "The model checkpoint for weights initialization."},
     )
-    
+
     padding_side: str = field(
         default="left",
         metadata={"help": "The padding side of the tokenizer."},

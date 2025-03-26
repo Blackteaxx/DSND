@@ -3,7 +3,7 @@ from argparse import ArgumentParser
 import torch
 from peft import LoraConfig, get_peft_model
 from src.arguments import DataArguments, ModelArguments, SNDTrainingArguments
-from src.dataset import SNDPackingCollator, SNDPackingDataset
+from src.dataset import SNDInferenceDataset, SNDPackingCollator, SNDPackingDataset
 from src.modeling import Qwen2ModelForSNDPubEmbedding
 from src.trainer import SNDTrainer
 from src.utils.logger import distributed_logging, get_logger
@@ -45,6 +45,8 @@ tokenizer = AutoTokenizer.from_pretrained(
     model_args.model_name_or_path,
 )
 tokenizer.padding_side = model_args.padding_side
+if "Llama" in model_args.model_name_or_path:
+    tokenizer.pad_token = tokenizer.eos_token
 
 train_dataset = SNDPackingDataset(
     data_args=data_args,
@@ -58,6 +60,10 @@ eval_dataset = SNDPackingDataset(
     mode="dev",
 )
 
+inference_dataset = SNDInferenceDataset(
+    data_args=data_args,
+    tokenizer=tokenizer,
+)
 
 bnb_config = BitsAndBytesConfig(
     load_in_4bit=True,
@@ -163,8 +169,12 @@ trainer = SNDTrainer(
     data_collator=SNDPackingCollator(),
     train_dataset=train_dataset,
     tokenizer=tokenizer,
-    eval_dataset=eval_dataset,
+    eval_dataset={"eval": eval_dataset, "inference": inference_dataset},
 )
 
-# trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
-trainer.train()
+def train():
+    # trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
+    trainer.train()
+    
+if __name__ == "__main__":
+    train()

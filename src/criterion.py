@@ -34,23 +34,13 @@ class ContrastiveLossCalculator(nn.Module):
 
         # 构建标签掩码
         label_mask = (all_labels.unsqueeze(1) == all_labels.unsqueeze(0)).float()
-        
-        # 计算logits
-        true_logits = logits.clone()
-
-        # # 计算Binary Cross Entropy损失
-        # flat_true_logits = true_logits.reshape(-1)
-        # flat_filtered_label_mask = label_mask.reshape(-1)
-        # contrastive_loss = F.binary_cross_entropy_with_logits(
-        #     flat_true_logits, flat_filtered_label_mask, reduction="mean"
-        # )
-
-        # 计算InfoNCE损失
-        # 排除自身样本，使用负无穷大填充对角线
         filtered_label_mask = label_mask.fill_diagonal_(0)
         num_pos_samples = filtered_label_mask.sum(dim=1, keepdim=True)
         valid_samples = num_pos_samples.squeeze() > 0
-        
+
+        # 计算InfoNCE损失
+        # 排除自身样本，使用负无穷大填充对角线
+        true_logits = logits.clone()
         true_logits[torch.eye(logits.size(0), dtype=torch.bool)] = float("-inf")
         log_prob = F.log_softmax(true_logits, dim=1)
         filtered_log_prob = log_prob.clone().fill_diagonal_(0)
