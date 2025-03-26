@@ -207,6 +207,8 @@ class SNDTrainer(Trainer):
 
         # ======================== Predict the results of validation set ========================
         if self.args.do_predict:
+            db_eps = 0.1
+            db_min = 5
             inference_dataloader = self.get_eval_dataloader(inference_dataset)
             inference_result = []
             with torch.no_grad():

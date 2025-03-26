@@ -33,7 +33,7 @@
     "stage3_param_persistence_threshold": "auto",
     "stage3_max_live_parameters": 5e8,
     "stage3_max_reuse_distance": 5e8,
-    "stage3_gather_16bit_weights_on_model_save": true
+    "stage3_gather_16bit_weights_on_model_save": false
   },
   "gradient_accumulation_steps": "auto",
   "gradient_clipping": "auto",

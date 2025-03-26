@@ -1,7 +1,7 @@
 from typing import Dict
 
 import numpy as np
-from sklearn.cluster import HDBSCAN, DBSCAN
+from sklearn.cluster import DBSCAN
 from sklearn.metrics.pairwise import pairwise_distances
 
 from .logger import get_logger
@@ -23,14 +23,10 @@ def hybrid_evaluate(
         "predict_results": None,
     }
 
-    # db_eps_list = [1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2]
-    # db_eps_list.extend(list(np.linspace(0.02, 0.5, 20)))
+    db_eps_list = [1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2]
+    db_eps_list.extend(list(np.linspace(0.02, 0.5, 20)))
 
-    # db_min_list = list(range(2, 11))
-    
-    db_eps_list = [0.1]
-    db_min_list = [1]
-
+    db_min_list = list(range(2, 11))
 
     # 外层循环：db_eps
     for db_eps in tqdm(db_eps_list, desc="DBSCAN eps"):
