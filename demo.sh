@@ -1,7 +1,9 @@
-# wandb login c37834adb2ff077abccb08740f0637503fd50661
-# wandb online   
-# wandb enabled
-export WANDB_MODE=disabled
+export WANDB_PROJECT=SNDPacking
+
+wandb login c37834adb2ff077abccb08740f0637503fd50661
+wandb online   
+wandb enabled
+# export WANDB_MODE=disabled
 
 
 NUM_GPUS=6

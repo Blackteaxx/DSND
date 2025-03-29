@@ -71,3 +71,13 @@ class SNDTrainingArguments(TrainingArguments):
         default=0.05,
         metadata={"help": "The temperature of the contrastive loss."},
     )
+
+    temperature_decay: float = field(
+        default=1,
+        metadata={"help": "The temperature decay of the contrastive loss."},
+    )
+
+    temperature_decay_step: int = field(
+        default=1000,
+        metadata={"help": "The temperature decay step of the contrastive loss."},
+    )

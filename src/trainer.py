@@ -4,6 +4,10 @@ from typing import Dict, List, Optional, Union
 
 import numpy as np
 import torch
+import torch.distributed as dist
+from safetensors.torch import save_file
+from sklearn.cluster import DBSCAN
+from sklearn.metrics.pairwise import pairwise_distances
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
@@ -22,12 +26,28 @@ logger = get_logger(__name__)
 class SNDTrainer(Trainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.contrastive_loss = ContrastiveLossCalculator(self.args.temperature)
+        self.contrastive_loss = ContrastiveLossCalculator()
+        self.temperature = self.args.temperature
+        self.temperature_decay = self.args.temperature_decay
+        self.temperature_decay_step = self.args.temperature_decay_step
+
+        self.rank = dist.get_rank() if dist.is_initialized() else 0
+        self.world_size = dist.get_world_size() if dist.is_initialized() else 1
 
     def compute_loss(self, model, inputs, return_outputs=False, *args, **kwargs):
         input_ids = inputs["input_ids"]
         attention_mask = inputs["attention_mask"]
         labels = inputs["labels"]
+
+        # 计算温度衰减：逐步增加训练难度
+        if (
+            self.state.global_step != 0
+            and self.state.global_step % self.temperature_decay_step == 0
+        ):
+            self.temperature *= self.temperature_decay
+            logger.info(
+                f"Step: {self.state.global_step}, Temperature decay to {self.temperature}"
+            )
 
         # 获取嵌入
         outputs = model(
@@ -35,11 +55,43 @@ class SNDTrainer(Trainer):
         )
         last_hidden_states = outputs.embeddings
 
+        all_hidden = self._dist_gather_tensor(last_hidden_states)
+        all_labels = self._dist_gather_tensor(labels)
+
         # 计算对比损失 - 所有设备都计算相同的损失
-        contrastive_loss = self.contrastive_loss(last_hidden_states, labels)
+        contrastive_loss = self.contrastive_loss(
+            all_hidden, all_labels, self.temperature
+        )
+
+        # 聚类损失: 提纯聚类结果
+        distances = pairwise_distances(
+            all_hidden.detach().cpu().float().numpy(),
+            metric="cosine",
+        )
+        pseudo_labels = DBSCAN(
+            eps=self.args.db_eps, min_samples=self.args.db_min, metric="precomputed"
+        ).fit_predict(distances)
+        # 将-1的结果作为outlier处理
+        unique_label = max(pseudo_labels) + 1
+        for i in range(len(pseudo_labels)):
+            if pseudo_labels[i] == -1:
+                pseudo_labels[i] = unique_label
+                unique_label += 1
+
+        cluster_loss = self.contrastive_loss(
+            all_hidden,
+            torch.tensor(pseudo_labels).to(all_hidden.device),
+            temperature=1,
+        )
+
+        loss = (contrastive_loss + cluster_loss) / 2
+
+        if self.rank == 0:
+            logger.info(f"Contrastive loss: {contrastive_loss.item()}")
+            logger.info(f"Cluster loss: {cluster_loss.item()}")
 
         # 不需要额外的梯度同步了，torch.distributed.nn.all_gather会处理
-        return (contrastive_loss, outputs) if return_outputs else contrastive_loss
+        return (loss, outputs) if return_outputs else loss
 
     def evaluate(
         self,
@@ -87,7 +139,7 @@ class SNDTrainer(Trainer):
             logger.info("  Num examples: Unknown")
         logger.info(f"  Batch size = {batch_size}")
 
-        # Start evaluation
+        # ======================== Evaluate the results of dev set ========================
         model.eval()
         eval_result = []
         observed_num_examples = 0
@@ -125,8 +177,6 @@ class SNDTrainer(Trainer):
                 if self.accelerator.is_main_process:
                     eval_result.extend(raw)
 
-        # logger.info("Observing samples = %d", len(eval_result))
-
         logger.info(f"Eval results len: {len(eval_result)}")
 
         # compute the metrics
@@ -149,6 +199,35 @@ class SNDTrainer(Trainer):
                     author_embeddings[author_name]
                 )
 
+            # save the embeddings and labels for further evaluation
+            author_embeddings_torch = {
+                author_name: torch.tensor(author_embeddings[author_name])
+                for author_name in author_embeddings
+            }
+            author_labels_torch = {
+                author_name: torch.tensor(author_labels[author_name])
+                for author_name in author_labels
+            }
+            os.makedirs(os.path.join(args.output_dir, "dev_embeddings"), exist_ok=True)
+            os.makedirs(os.path.join(args.output_dir, "dev_labels"), exist_ok=True)
+            save_file(
+                author_embeddings_torch,
+                os.path.join(
+                    args.output_dir,
+                    "dev_embeddings",
+                    f"step-{self.state.global_step}.safetensors",
+                ),
+            )
+            save_file(
+                author_labels_torch,
+                os.path.join(
+                    args.output_dir,
+                    "dev_labels",
+                    f"step-{self.state.global_step}.safetensors",
+                ),
+            )
+
+            # evaluate the results
             best_results = hybrid_evaluate(
                 author_embeddings=author_embeddings,
                 author_labels=author_labels,
@@ -207,8 +286,8 @@ class SNDTrainer(Trainer):
 
         # ======================== Predict the results of validation set ========================
         if self.args.do_predict:
-            db_eps = 0.1
-            db_min = 5
+            db_eps = self.args.db_eps
+            db_min = self.args.db_min
             inference_dataloader = self.get_eval_dataloader(inference_dataset)
             inference_result = []
             with torch.no_grad():
@@ -252,7 +331,7 @@ class SNDTrainer(Trainer):
                         author_pub_ids[author_name] = []
                     author_embeddings[author_name].append(embedding)
                     author_pub_ids[author_name].append(pub["pub_id"])
-                
+
                 logger.info(f"author_pub_ids: {author_pub_ids['haifeng_qian']}")
 
                 for author_name in author_embeddings:
@@ -262,8 +341,12 @@ class SNDTrainer(Trainer):
 
                 logger.info("db_eps: %f, db_min: %d", db_eps, db_min)
                 inference_predict_results = predict(author_embeddings, db_eps, db_min)
-                logger.info(f"haifeng_qian: {len(inference_predict_results['haifeng_qian'])}")
-                logger.info(f"haifeng_qian: {inference_predict_results['haifeng_qian']}")
+                logger.info(
+                    f"haifeng_qian: {len(inference_predict_results['haifeng_qian'])}"
+                )
+                logger.info(
+                    f"haifeng_qian: {inference_predict_results['haifeng_qian']}"
+                )
 
                 # save the valid results for uploading
                 valid_results = {}
@@ -305,3 +388,17 @@ class SNDTrainer(Trainer):
                     "w",
                 ) as f:
                     json.dump(valid_results, f, indent=4)
+
+    # copied from https://github.com/shyoulala/Kaggle_Eedi_2024_sayoulala/blob/main/recall_code/qwen2_qlora_v1.py#L762
+    def _dist_gather_tensor(self, t: Optional[torch.Tensor]):
+        if t is None:
+            return None
+        t = t.contiguous()
+
+        all_tensors = [torch.empty_like(t) for _ in range(self.world_size)]
+        dist.all_gather(all_tensors, t)
+
+        all_tensors[self.rank] = t
+        all_tensors = torch.cat(all_tensors, dim=0)
+
+        return all_tensors
