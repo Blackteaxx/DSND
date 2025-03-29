@@ -3,7 +3,10 @@
     "padding_side": "left",
 
     "packing_size": 12,
-    "positive_num": 6,
+    "positive_num": 4,
+
+    "db_min": 5,
+    "db_eps": 0.05,
 
     "temperature": 0.05,
     "temperature_decay": 0.99,
@@ -13,12 +16,12 @@
 
     "warmup_ratio": 0.1,
     "lr_scheduler_type": "cosine",
-    "learning_rate":6e-6,
+    "learning_rate":1e-5,
 
     "report_to": "wandb",
-    "run_name": "7B-6-12Pack-0.05Temp-0.99Decay-200DecayStep-6e-6LR",
+    "run_name": "7B-4-12Pack-0.05Temp-0.99Decay-200DecayStep-1e-5LR-Sequential",
 
-    "output_dir": "/data/name_disambiguation/model/7B-6-12Pack-0.05Temp-0.99Decay-200DecayStep-5e-6LR",
+    "output_dir": "/data/name_disambiguation/model/7B-4-12Pack-0.05Temp-0.99Decay-200DecayStep-1e-5LR-Sequential",
     "per_device_train_batch_size": 1,
     "per_device_eval_batch_size": 1,
     "num_train_epochs": 1,
@@ -32,7 +35,8 @@
     "remove_unused_columns": false,
 
     "logging_steps": 1,
-    "logging_dir": "/data/name_disambiguation/model/SNDPacking/logs",
+    "logging_dir": "/data/name_disambiguation/model/SND7B-4-12Pack-0.05Temp-0.99Decay-200DecayStep-1e-5LR-SequentialPacking/logs",
+    
     "bf16": true,
 
     "gradient_accumulation_steps": 1,

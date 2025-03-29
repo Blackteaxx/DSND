@@ -9,7 +9,7 @@ from tqdm import tqdm
 from transformers import PreTrainedTokenizer
 
 from .arguments import DataArguments
-from .utils.hierarchical_sampler import HierarchicalSampler
+from .utils.triplet_collector import TripletCollector
 from .utils.logger import get_logger
 from .utils.prompt_template import format_paper_for_llm
 
@@ -93,7 +93,7 @@ class SNDPackingDataset(Dataset):
         self.data = []
         if self.mode == "train":
             # packing: "text_feature", "label"
-            self.sampler = HierarchicalSampler(
+            self.sampler = TripletCollector(
                 names_pub=self.names_pub,
                 author_pub_labels=author_pub_labels,
                 packing_size=data_args.packing_size,

@@ -37,7 +37,7 @@ class ContrastiveLossCalculator(nn.Module):
             -(filtered_label_mask * filtered_log_prob) / (num_pos_samples + 1e-8)
         ).sum(dim=1)
         contrastive_loss = per_sample_loss[valid_samples].mean()
-        
+
         if torch.isnan(contrastive_loss):
             logger.warning("contrastive_loss is nan")
             logger.warning(f"Possibly caused by num_pos_samples: {num_pos_samples}")
@@ -45,3 +45,37 @@ class ContrastiveLossCalculator(nn.Module):
             contrastive_loss = torch.tensor(0.0).to(per_sample_loss.device)
 
         return contrastive_loss
+
+
+class ClusterLossCalculator(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        pseudo_labels: torch.Tensor,
+        temperature: float,
+    ) -> torch.Tensor:
+        all_hidden = hidden_states
+        all_labels = pseudo_labels
+
+        # 计算相似度矩阵
+        logits = torch.mm(all_hidden, all_hidden.T) / temperature
+
+        # 构建标签掩码
+        label_mask = (all_labels.unsqueeze(1) == all_labels.unsqueeze(0)).to(dtype=logits.dtype)
+
+        # binary cross entropy loss
+        global_label = logits.reshape(-1)
+        local_label = label_mask.reshape(-1)
+        cluster_loss = F.binary_cross_entropy(
+            global_label, local_label, reduction="mean"
+        ) # BCE with probability
+
+        if torch.isnan(cluster_loss):
+            logger.warning("contrastive_loss is nan")
+            logger.warning(f"Labels: {all_labels}")
+            cluster_loss = torch.tensor(0.0).to(all_hidden.device)
+
+        return cluster_loss

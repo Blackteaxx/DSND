@@ -8,7 +8,7 @@ import torch.distributed as dist
 from safetensors.torch import save_file
 from sklearn.cluster import DBSCAN
 from sklearn.metrics.pairwise import pairwise_distances
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, RandomSampler, Sampler, SequentialSampler
 from tqdm import tqdm
 
 from transformers import Trainer
@@ -16,7 +16,7 @@ from transformers.integrations.deepspeed import deepspeed_init
 from transformers.trainer_pt_utils import find_batch_size
 from transformers.trainer_utils import has_length
 
-from .criterion import ContrastiveLossCalculator
+from .criterion import ClusterLossCalculator, ContrastiveLossCalculator
 from .utils.evaluate import hybrid_evaluate, predict
 from .utils.logger import get_logger
 
@@ -27,12 +27,17 @@ class SNDTrainer(Trainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.contrastive_loss = ContrastiveLossCalculator()
+        self.cluster_loss = ClusterLossCalculator()
+
         self.temperature = self.args.temperature
         self.temperature_decay = self.args.temperature_decay
         self.temperature_decay_step = self.args.temperature_decay_step
 
         self.rank = dist.get_rank() if dist.is_initialized() else 0
         self.world_size = dist.get_world_size() if dist.is_initialized() else 1
+
+        self.last_contrastive_loss = 0.0
+        self.last_cluster_loss = 0.0
 
     def compute_loss(self, model, inputs, return_outputs=False, *args, **kwargs):
         input_ids = inputs["input_ids"]
@@ -77,18 +82,18 @@ class SNDTrainer(Trainer):
             if pseudo_labels[i] == -1:
                 pseudo_labels[i] = unique_label
                 unique_label += 1
-
-        cluster_loss = self.contrastive_loss(
+        pseudo_labels = torch.tensor(pseudo_labels).to(all_hidden.device)
+        # 计算聚类损失
+        cluster_loss = self.cluster_loss(
             all_hidden,
-            torch.tensor(pseudo_labels).to(all_hidden.device),
-            temperature=1,
+            pseudo_labels,
+            1,
         )
 
-        loss = (contrastive_loss + cluster_loss) / 2
+        self.last_contrastive_loss = contrastive_loss.item()
+        self.last_cluster_loss = cluster_loss.item()
 
-        if self.rank == 0:
-            logger.info(f"Contrastive loss: {contrastive_loss.item()}")
-            logger.info(f"Cluster loss: {cluster_loss.item()}")
+        loss = (contrastive_loss + cluster_loss) / 2
 
         # 不需要额外的梯度同步了，torch.distributed.nn.all_gather会处理
         return (loss, outputs) if return_outputs else loss
@@ -402,3 +407,89 @@ class SNDTrainer(Trainer):
         all_tensors = torch.cat(all_tensors, dim=0)
 
         return all_tensors
+
+    # copied from https://blog.csdn.net/qq_42729417/article/details/142309057
+    def _get_train_sampler(self) -> Optional[Sampler]:
+        """Return SequentialSampler if distributed training, else RandomSampler.
+
+        Returns:
+            Optional[Sampler]: _description_
+        """
+
+        if self.train_dataset is None or not has_length(self.train_dataset):
+            return None
+
+        if self.args.local_rank != -1 or self.args.world_size > 1:
+            # When using distributed training, we need to use a DistributedSampler
+            # to ensure that each process gets a different subset of the data.
+            return SequentialSampler(self.train_dataset)
+        else:
+            # If not using distributed training, we can use a RandomSampler
+            return RandomSampler(self.train_dataset)
+
+    # copied from transformers/trainer.py
+    def _maybe_log_save_evaluate(
+        self, tr_loss, grad_norm, model, trial, epoch, ignore_keys_for_eval
+    ):
+        if (
+            self.control.should_log
+            and self.state.global_step > self._globalstep_last_logged
+        ):
+            # if is_torch_xla_available():
+            #     xm.mark_step()
+
+            logs: Dict[str, float] = {}
+
+            # all_gather + mean() to get average loss over all processes
+            tr_loss_scalar = self._nested_gather(tr_loss).mean().item()
+
+            # reset tr_loss to zero
+            tr_loss -= tr_loss
+
+            logs["loss"] = round(
+                tr_loss_scalar
+                / (self.state.global_step - self._globalstep_last_logged),
+                4,
+            )
+            logs["contrastive_loss"] = round(
+                self.last_contrastive_loss,
+                4,
+            )
+            logs["cluster_loss"] = round(
+                self.last_cluster_loss,
+                4,
+            )
+
+            if grad_norm is not None:
+                logs["grad_norm"] = (
+                    grad_norm.detach().item()
+                    if isinstance(grad_norm, torch.Tensor)
+                    else grad_norm
+                )
+            logs["learning_rate"] = self._get_learning_rate()
+
+            self._total_loss_scalar += tr_loss_scalar
+            self._globalstep_last_logged = self.state.global_step
+            self.store_flos()
+
+            self.log(logs)
+
+        metrics = None
+        if self.control.should_evaluate:
+            metrics = self.evaluate(ignore_keys=ignore_keys_for_eval)
+            self._report_to_hp_search(trial, self.state.global_step, metrics)
+
+            # Run delayed LR scheduler now that metrics are populated
+            if isinstance(
+                self.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau
+            ):
+                metric_to_check = self.args.metric_for_best_model
+                if not metric_to_check.startswith("eval_"):
+                    metric_to_check = f"eval_{metric_to_check}"
+                self.lr_scheduler.step(metrics[metric_to_check])
+
+        if self.control.should_save:
+            self._save_checkpoint(model, trial, metrics=metrics)
+            self.control = self.callback_handler.on_save(
+                self.args, self.state, self.control
+            )
