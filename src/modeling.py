@@ -7,6 +7,8 @@ import torch.nn as nn
 from transformers import Qwen2Model, Qwen2PreTrainedModel
 from transformers.utils import ModelOutput
 
+from .arguments import SpecialToken
+
 
 @dataclass
 class SNDOutputWithPast(ModelOutput):
@@ -16,12 +18,38 @@ class SNDOutputWithPast(ModelOutput):
     embeddings: Optional[torch.FloatTensor] = None
 
 
+# Copied from transformers.models.mistral.modeling_mistral.MistralMLP with Mistral->Qwen2
+class Qwen2MLP(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.config = config
+        self.graph_hidden_size = config.model_args.graph_hidden_size
+        self.intermediate_size = config.hidden_size * 2
+        self.hidden_size = config.hidden_size
+        self.gate_proj = nn.Linear(
+            self.graph_hidden_size, self.intermediate_size, bias=False
+        )
+        self.up_proj = nn.Linear(
+            self.graph_hidden_size, self.intermediate_size, bias=False
+        )
+        self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
+        self.act_fn = nn.SiLU()
+
+    def forward(self, x):
+        return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
+
+
 class Qwen2ModelForSNDPubEmbedding(Qwen2PreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
+        self.model_args = config.model_args
+
         self.model = Qwen2Model(config)
         self.vocab_size = config.vocab_size
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+
+        if self.model_args.use_graph:
+            self.graph_proj = self.init_graph_proj(config=config)
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -43,6 +71,9 @@ class Qwen2ModelForSNDPubEmbedding(Qwen2PreTrainedModel):
 
     def get_decoder(self):
         return self.model
+
+    def init_graph_proj(self, config):
+        return Qwen2MLP(config)
 
     def forward(
         self,
@@ -86,15 +117,12 @@ class Qwen2ModelForSNDPubEmbedding(Qwen2PreTrainedModel):
 
         last_hidden_states = outputs.last_hidden_state
         sentence_embeddings = self.last_token_pool(last_hidden_states, attention_mask)
-        normed_sentence_embeddings = nn.functional.normalize(
-            sentence_embeddings, p=2, dim=-1
-        )
 
         return SNDOutputWithPast(
             past_key_values=outputs.past_key_values,
             last_hidden_states=last_hidden_states,
             attentions=outputs.attentions,
-            embeddings=normed_sentence_embeddings,
+            embeddings=sentence_embeddings,
         )
 
     def last_token_pool(
@@ -110,6 +138,9 @@ class Qwen2ModelForSNDPubEmbedding(Qwen2PreTrainedModel):
                 torch.arange(batch_size, device=last_hidden_states.device),
                 sequence_lengths,
             ]
+
+    def add_special_tokens(self, tokenizer):
+        self.graph_token_id = tokenizer.convert_tokens_to_ids(SpecialToken.GRAPH_TOKEN)
 
     def gradient_checkpointing_enable(self, **kwargs):
         self.model.gradient_checkpointing_enable(**kwargs)

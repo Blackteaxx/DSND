@@ -1,14 +1,23 @@
+import os
 from argparse import ArgumentParser
 
 import torch
 from peft import LoraConfig, get_peft_model
-from src.arguments import DataArguments, ModelArguments, SNDTrainingArguments
+from src.arguments import (
+    DataArguments,
+    ModelArguments,
+    SNDTrainingArguments,
+    SpecialToken,
+    generate_snd_run_name,
+    get_snd_output_dir,
+)
 from src.dataset import SNDInferenceDataset, SNDPackingCollator, SNDPackingDataset
 from src.modeling import Qwen2ModelForSNDPubEmbedding
 from src.trainer import SNDTrainer
 from src.utils.logger import distributed_logging, get_logger
 
 from transformers import (
+    AutoConfig,
     AutoTokenizer,
     BitsAndBytesConfig,
     HfArgumentParser,
@@ -30,8 +39,29 @@ config_path = args.config
 
 data_args, model_args, training_args = HfArgumentParser(
     (DataArguments, ModelArguments, SNDTrainingArguments)
-).parse_json_file(config_path)
+).parse_yaml_file(config_path)
 
+# 设置run_name
+training_args.run_name = generate_snd_run_name(
+    model_name_or_path=model_args.model_name_or_path,
+    positive_num=data_args.positive_num,
+    packing_size=data_args.packing_size,
+    temperature=training_args.temperature,
+    temperature_decay=training_args.temperature_decay,
+    temperature_decay_step=training_args.temperature_decay_step,
+    learning_rate=training_args.learning_rate,
+    shuffle=training_args.shuffle,
+    use_graph=model_args.use_graph,
+    dynamic_weight=training_args.dynamic_weight,
+)
+training_args.output_dir = get_snd_output_dir(
+    model_name_or_path=model_args.model_name_or_path,
+    base_output_dir=training_args.output_dir,
+)
+training_args.logging_dir = os.path.join(
+    training_args.output_dir,
+    "logs",
+)
 
 distributed_logging(
     logger,
@@ -45,24 +75,41 @@ tokenizer = AutoTokenizer.from_pretrained(
     model_args.model_name_or_path,
 )
 tokenizer.padding_side = model_args.padding_side
+
 if "Llama" in model_args.model_name_or_path:
     tokenizer.pad_token = tokenizer.eos_token
+
+# add special tokens
+if model_args.use_graph:
+    special_tokens_dict = {"additional_special_tokens": [SpecialToken.GRAPH_TOKEN]}
+    num_added_toks = tokenizer.add_special_tokens(special_tokens_dict)
+    if num_added_toks > 0:
+        logger.info(
+            f"Added {num_added_toks} tokens to the tokenizer. "
+            f"Please make sure to resize the model's token embeddings accordingly."
+        )
+
 
 train_dataset = SNDPackingDataset(
     data_args=data_args,
     tokenizer=tokenizer,
     mode="train",
+    shuffle=training_args.shuffle,
+    use_graph=model_args.use_graph,
 )
 
 eval_dataset = SNDPackingDataset(
     data_args=data_args,
     tokenizer=tokenizer,
     mode="dev",
+    shuffle=training_args.shuffle,
+    use_graph=model_args.use_graph,
 )
 
 inference_dataset = SNDInferenceDataset(
     data_args=data_args,
     tokenizer=tokenizer,
+    use_graph=model_args.use_graph,
 )
 
 bnb_config = BitsAndBytesConfig(
@@ -72,15 +119,29 @@ bnb_config = BitsAndBytesConfig(
     bnb_4bit_compute_dtype=torch.bfloat16,
 )
 
+model_config = AutoConfig.from_pretrained(
+    model_args.model_name_or_path,
+)
+
+model_config.use_cache = False
+model_config.model_args = model_args
+
 model = Qwen2ModelForSNDPubEmbedding.from_pretrained(
     model_args.model_name_or_path,
+    config=model_config,
     quantization_config=bnb_config,
     trust_remote_code=True,
     attn_implementation="flash_attention_2",
 )
 
+if model_args.use_graph:
+    model.add_special_tokens(tokenizer)
+
 modules_to_save = []
 modules_to_save += "lora"
+modules_to_save += "loss_weight"
+if model_args.use_graph:
+    modules_to_save += "graph_proj"
 
 
 target_modules = [
@@ -147,20 +208,9 @@ else:
     if not is_valid:
         raise ValueError("LoRA权重未正确初始化！请检查配置")
 
-
+# enable gradient checkpointing
 model.gradient_checkpointing_enable()
 model.enable_input_require_grads()
-
-
-# 在开始训练前添加这段代码
-def log_grad_hook(module, grad_input, grad_output):
-    if hasattr(module, "_name") and "lora" in module._name:
-        distributed_logging(
-            logger,
-            f"Module: {module._name}",
-            f"Grad Input: {grad_input}",
-            f"Grad Output: {grad_output}",
-        )
 
 
 trainer = SNDTrainer(
@@ -172,9 +222,11 @@ trainer = SNDTrainer(
     eval_dataset={"eval": eval_dataset, "inference": inference_dataset},
 )
 
+
 def train():
     # trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
     trainer.train()
-    
+
+
 if __name__ == "__main__":
     train()

@@ -39,6 +39,9 @@ class SNDTrainer(Trainer):
         self.last_contrastive_loss = 0.0
         self.last_cluster_loss = 0.0
 
+        self.loss_weight = torch.tensor(0.5, device=self.args.device)
+        self.loss_weight.requires_grad = True if self.args.dynamic_weight else False
+
     def compute_loss(self, model, inputs, return_outputs=False, *args, **kwargs):
         input_ids = inputs["input_ids"]
         attention_mask = inputs["attention_mask"]
@@ -93,7 +96,11 @@ class SNDTrainer(Trainer):
         self.last_contrastive_loss = contrastive_loss.item()
         self.last_cluster_loss = cluster_loss.item()
 
-        loss = (contrastive_loss + cluster_loss) / 2
+        loss_weight = self.loss_weight.to(
+            all_hidden.device
+        )  # 确保loss_weight在正确的设备上
+
+        loss = loss_weight * contrastive_loss + (1 - loss_weight) * cluster_loss
 
         # 不需要额外的梯度同步了，torch.distributed.nn.all_gather会处理
         return (loss, outputs) if return_outputs else loss
@@ -418,6 +425,10 @@ class SNDTrainer(Trainer):
 
         if self.train_dataset is None or not has_length(self.train_dataset):
             return None
+        
+        if self.args.shuffle:
+            # If shuffle is True, we use RandomSampler
+            return RandomSampler(self.train_dataset)
 
         if self.args.local_rank != -1 or self.args.world_size > 1:
             # When using distributed training, we need to use a DistributedSampler
@@ -467,6 +478,9 @@ class SNDTrainer(Trainer):
                     else grad_norm
                 )
             logs["learning_rate"] = self._get_learning_rate()
+
+            loss_weight = self.loss_weight
+            logs["loss_weight"] = loss_weight.item()
 
             self._total_loss_scalar += tr_loss_scalar
             self._globalstep_last_logged = self.state.global_step

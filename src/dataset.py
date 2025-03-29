@@ -3,15 +3,16 @@ import os
 from typing import Literal
 
 import torch
+from safetensors.torch import load_file
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
 from transformers import PreTrainedTokenizer
 
 from .arguments import DataArguments
-from .utils.triplet_collector import TripletCollector
 from .utils.logger import get_logger
 from .utils.prompt_template import format_paper_for_llm
+from .utils.triplet_collector import TripletCollector
 
 VALID_MODES = ["train", "dev", "valid", "test"]
 
@@ -40,6 +41,9 @@ class SNDPackingDataset(Dataset):
         tokenizer: PreTrainedTokenizer = None,
         data_args: DataArguments = None,
         mode: Literal["train", "dev", "valid", "test"] = "train",
+        shuffle: bool = True,
+        seed: int = 42,
+        use_graph: bool = False,
     ):
         self.data_args: DataArguments
         self.names_pub: dict
@@ -51,12 +55,16 @@ class SNDPackingDataset(Dataset):
         self.data_args = data_args
         self.tokenizer = tokenizer
         self.mode = mode
+        self.shuffle = shuffle
+        self.seed = seed
+        self.use_graph = use_graph
 
         assert self.mode in VALID_MODES, f"Invalid mode: {self.mode}"
 
         # Load the data
         names_pub_path = os.path.join(data_args.names_pub_dir, f"{self.mode}.json")
         self.feature_dir = os.path.join(data_args.feature_dir, self.mode)
+        graph_embedding_path = data_args.graph_feature_path
 
         # Load the names_pub data
         with open(names_pub_path, "r") as f:
@@ -80,6 +88,14 @@ class SNDPackingDataset(Dataset):
                 if author_name in self.names_pub:
                     author_pub_labels[author_name] = all_author_pub_labels[author_name]
 
+        # 读取graph embedding
+        if self.use_graph:
+            if not os.path.exists(graph_embedding_path):
+                raise FileNotFoundError(
+                    f"Graph embedding file required for {self.mode} mode: {graph_embedding_path}"
+                )
+            self.pub_graph_embeddings = load_file(graph_embedding_path)
+
         self.has_labels = label_path is not None
         self.pub_to_author = {}
 
@@ -99,6 +115,8 @@ class SNDPackingDataset(Dataset):
                 packing_size=data_args.packing_size,
                 positive_ratio=data_args.positive_ratio,
                 positive_num=data_args.positive_num,
+                shuffle=shuffle,
+                random_seed=seed,
             )
             pubs_packing_data = self.sampler.sampling()
             for packing_data in tqdm(
@@ -154,27 +172,52 @@ class SNDPackingDataset(Dataset):
             labels = torch.LongTensor(labels)
             batch["labels"] = labels
 
+        if self.use_graph:
+            graph_embeddings = [d["graph_embedding"] for d in data]
+            graph_embeddings = torch.stack(graph_embeddings)
+            batch["graph_embeddings"] = graph_embeddings
+
         if self.mode != "train":
             batch["author_names"] = [d["author_name"] for d in data]
 
         return batch
 
     def _get_features(self, pub: str):
+        """
+
+        Args:
+            pub (str): _description_
+
+        Returns:
+            _type_: _description_
+        """
         author_name = self.pub_to_author[pub]
 
         papers_dict = self.names_pub[author_name]
         paper_dict = papers_dict[pub]
-        text_feature = format_paper_for_llm(paper_dict, author_name)
+        text_feature = format_paper_for_llm(
+            paper_dict, author_name, use_graph=self.use_graph
+        )
 
         features = {"text_feature": text_feature}
 
         if self.has_labels:
             features["label"] = self.labels[pub]
+
+        if self.use_graph:
+            graph_embedding = self.pub_graph_embeddings[pub]
+            features["graph_embedding"] = graph_embedding
+
         return features
 
 
 class SNDInferenceDataset(Dataset):
-    def __init__(self, tokenizer: PreTrainedTokenizer, data_args: DataArguments):
+    def __init__(
+        self,
+        tokenizer: PreTrainedTokenizer,
+        data_args: DataArguments,
+        use_graph: bool = False,
+    ):
         self.tokenizer = tokenizer
         self.data_args = data_args
 

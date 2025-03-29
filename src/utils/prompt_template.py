@@ -1,8 +1,12 @@
-def format_paper_for_llm(paper_dict: dict, author_name: str):
+def format_paper_for_llm(
+    paper_dict: dict, author_name: str, use_graph: bool = False
+) -> str:
     """将论文字典转换为LLM友好的结构化文本
 
     Args:
         paper_dict: 包含论文元数据的字典
+        author_name: 主要作者姓名
+        use_graph: 是否使用图数据（默认为False）
 
     Returns:
         str: 适合LLM处理的自然语言格式文本
@@ -12,6 +16,8 @@ def format_paper_for_llm(paper_dict: dict, author_name: str):
     prompt = "Given the following related infomation of the research paper: {}. Use one word to describe the research paper to separate it from others."
 
     # 1. 标题与作者信息强化
+    if use_graph:
+        components.append("\nGraph Information: <GRAPH>")
     components.append(f"Research Paper Title: {paper_dict['title']}")
     components.append("\nMain Author: " + author_name)
     components.append("\nAuthors:")

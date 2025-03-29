@@ -3,13 +3,11 @@ from typing import Dict
 import numpy as np
 from sklearn.cluster import DBSCAN
 from sklearn.metrics.pairwise import pairwise_distances
+from tqdm import tqdm
 
 from .logger import get_logger
 
 logger = get_logger(__name__)
-
-
-from tqdm import tqdm
 
 
 def hybrid_evaluate(
@@ -27,8 +25,8 @@ def hybrid_evaluate(
     # db_eps_list.extend(list(np.linspace(0.02, 0.5, 20)))
 
     # db_min_list = list(range(2, 11))
-    
-    db_eps_list = [0.1]
+
+    db_eps_list = [0.05]
     db_min_list = [5]
 
     # 外层循环：db_eps
@@ -62,7 +60,7 @@ def hybrid_evaluate(
 def compute_pairwise_f1(
     author_embeddings: Dict[str, np.ndarray],
     author_labels: Dict[str, np.ndarray],
-    db_eps: float = 1e-6,
+    db_eps: float = 0.05,
     db_min: int = 5,
 ):
     predict_results = {}
@@ -80,6 +78,14 @@ def compute_pairwise_f1(
         ).fit_predict(similarity_matrix)
 
         pred = local_labels.tolist()
+
+        # 处理outliers
+        unique_label = max(pred) + 1
+        for i in range(len(pred)):
+            if pred[i] == -1:
+                pred[i] = unique_label
+                unique_label += 1
+
         predict_results[author_name] = pred
 
         distance_detailed_info += (
@@ -89,7 +95,6 @@ def compute_pairwise_f1(
 
     # 计算F1
     avg_f1, detailed_info = evaluate(predict_results, author_labels)
-    # detailed_info += distance_detailed_info
     return avg_f1, predict_results, detailed_info
 
 

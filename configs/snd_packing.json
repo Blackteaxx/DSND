@@ -1,47 +1,44 @@
 {
-    "model_name_or_path": "/data/name_disambiguation/model/Qwen/Qwen2.5-7B",
-    "padding_side": "left",
+  "model_name_or_path": "/data/name_disambiguation/model/Qwen/Qwen2.5-7B",
+  "padding_side": "left",
+  "use_graph": false,
+  "dynamic_weight": false,
 
-    "packing_size": 12,
-    "positive_num": 4,
+  "packing_size": 12,
+  "positive_num": 4,
+  "shuffle": true,
 
-    "db_min": 5,
-    "db_eps": 0.05,
+  "do_predict": false,
+  "resume_from_checkpoint": "/data/name_disambiguation/model/SNDPacking/checkpoint-1",
+  "num_train_epochs": 1,
+  "save_steps": 200,
+  "save_total_limit": 200,
+  "evaluation_strategy": "steps",
+  "eval_steps": 200,
+  "load_best_model_at_end": false,
+  "metric_for_best_model": "avg_f1",
+  "remove_unused_columns": false,
 
-    "temperature": 0.05,
-    "temperature_decay": 0.99,
-    "temperature_decay_step": 200,
+  "learning_rate": 1e-5,
+  "warmup_ratio": 0.1,
+  "lr_scheduler_type": "cosine",
 
-    "do_predict": false,
+  "db_min": 5,
+  "db_eps": 0.05,
 
-    "warmup_ratio": 0.1,
-    "lr_scheduler_type": "cosine",
-    "learning_rate":1e-5,
+  "temperature": 0.05,
+  "temperature_decay": 0.99,
+  "temperature_decay_step": 200,
 
-    "report_to": "wandb",
-    "run_name": "7B-4-12Pack-0.05Temp-0.99Decay-200DecayStep-1e-5LR-Sequential",
+  "per_device_train_batch_size": 1,
+  "per_device_eval_batch_size": 1,
+  "gradient_accumulation_steps": 1,
+  "bf16": true,
+  "deepspeed": "/data/name_disambiguation/configs/ds_configs/ds_zero_3.json",
 
-    "output_dir": "/data/name_disambiguation/model/7B-4-12Pack-0.05Temp-0.99Decay-200DecayStep-1e-5LR-Sequential",
-    "per_device_train_batch_size": 1,
-    "per_device_eval_batch_size": 1,
-    "num_train_epochs": 1,
-    "save_steps": 200,
-    "save_total_limit": 200,
-
-    "evaluation_strategy": "steps",
-    "eval_steps": 200,
-    "load_best_model_at_end": false,
-    "metric_for_best_model": "avg_f1",
-    "remove_unused_columns": false,
-
-    "logging_steps": 1,
-    "logging_dir": "/data/name_disambiguation/model/SND7B-4-12Pack-0.05Temp-0.99Decay-200DecayStep-1e-5LR-SequentialPacking/logs",
-    
-    "bf16": true,
-
-    "gradient_accumulation_steps": 1,
-
-    "deepspeed": "/data/name_disambiguation/configs/ds_configs/ds_zero_3.json",
-
-    "resume_from_checkpoint": "/data/name_disambiguation/model/SNDPacking/checkpoint-1"
+  "output_dir": "/data/name_disambiguation/model/7B-4-12Pack-0.05Temp-0.99Decay-200DecayStep-1e-5LR-Sequential",
+  "report_to": "wandb",
+  "run_name": "7B-4-12Pack-0.05Temp-0.99Decay-200DecayStep-1e-5LR-Sequential",
+  "logging_steps": 1,
+  "logging_dir": "/data/name_disambiguation/model/SND7B-4-12Pack-0.05Temp-0.99Decay-200DecayStep-1e-5LR-SequentialPacking/logs"
 }

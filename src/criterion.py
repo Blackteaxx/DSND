@@ -14,7 +14,7 @@ class ContrastiveLossCalculator(nn.Module):
     def forward(
         self, hidden_states: torch.Tensor, labels: torch.Tensor, temperature: float
     ) -> torch.Tensor:
-        all_hidden = hidden_states
+        all_hidden = nn.functional.normalize(hidden_states, p=2, dim=1)
         all_labels = labels
 
         # 计算相似度矩阵
@@ -57,21 +57,21 @@ class ClusterLossCalculator(nn.Module):
         pseudo_labels: torch.Tensor,
         temperature: float,
     ) -> torch.Tensor:
-        all_hidden = hidden_states
+        all_hidden = nn.functional.normalize(hidden_states, p=2, dim=1)
         all_labels = pseudo_labels
 
         # 计算相似度矩阵
         logits = torch.mm(all_hidden, all_hidden.T) / temperature
 
         # 构建标签掩码
-        label_mask = (all_labels.unsqueeze(1) == all_labels.unsqueeze(0)).to(dtype=logits.dtype)
+        label_mask = (all_labels.unsqueeze(1) == all_labels.unsqueeze(0)).float()
 
         # binary cross entropy loss
         global_label = logits.reshape(-1)
         local_label = label_mask.reshape(-1)
-        cluster_loss = F.binary_cross_entropy(
+        cluster_loss = F.binary_cross_entropy_with_logits(
             global_label, local_label, reduction="mean"
-        ) # BCE with probability
+        )  # BCE with probability
 
         if torch.isnan(cluster_loss):
             logger.warning("contrastive_loss is nan")
