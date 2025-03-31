@@ -16,6 +16,7 @@ def generate_snd_run_name(
     shuffle: bool = False,
     use_graph: bool = False,
     dynamic_weight: bool = False,
+    use_cluster_loss: bool = True,
     *args,
     **kwargs,
 ) -> str:
@@ -33,6 +34,7 @@ def generate_snd_run_name(
         shuffle: 是否打乱数据
         use_graph: 是否使用图数据
         dynamic_weight: 是否使用动态权重
+        use_cluster_loss: 是否使用聚类损失
 
     返回:
         生成的run_name字符串
@@ -67,13 +69,18 @@ def generate_snd_run_name(
         components.append("Graph")
     if dynamic_weight:
         components.append("DynamicW")
+    if use_cluster_loss:
+        components.append("ClusterLoss")
 
     # 生成最终名称
     return "-".join(components)
 
 
 def get_snd_output_dir(
-    model_name_or_path: str, base_output_dir: Optional[str] = None, **kwargs
+    model_name_or_path: str,
+    base_output_dir: Optional[str] = None,
+    run_name: str = None,
+    **kwargs,
 ) -> str:
     """
     根据SND任务参数生成输出目录路径
@@ -86,7 +93,6 @@ def get_snd_output_dir(
     返回:
         完整的输出目录路径
     """
-    run_name = generate_snd_run_name(model_name_or_path, **kwargs)
 
     if base_output_dir is None:
         # 默认放在模型同级目录的SND文件夹下
@@ -165,6 +171,21 @@ class ModelArguments:
         metadata={"help": "Whether to use graph data."},
     )
 
+    lora_module_path: str = field(
+        default=None,
+        metadata={"help": "The path to the pretrained lora module."},
+    )
+
+    graph_hidden_size: int = field(
+        default=768,
+        metadata={"help": "The hidden size of the graph projection module."},
+    )
+
+    graph_proj_module_path: str = field(
+        default=None,
+        metadata={"help": "The path to the pretrained graph projection module."},
+    )
+
 
 @dataclass
 class SNDTrainingArguments(TrainingArguments):
@@ -201,4 +222,9 @@ class SNDTrainingArguments(TrainingArguments):
     dynamic_weight: bool = field(
         default=False,
         metadata={"help": "Whether to use dynamic weight."},
+    )
+
+    use_cluster_loss: bool = field(
+        default=True,
+        metadata={"help": "Whether to use cluster loss."},
     )

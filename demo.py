@@ -2,7 +2,8 @@ import os
 from argparse import ArgumentParser
 
 import torch
-from peft import LoraConfig, get_peft_model
+from peft import LoraConfig, get_peft_model, set_peft_model_state_dict
+from safetensors.torch import load_file
 from src.arguments import (
     DataArguments,
     ModelArguments,
@@ -53,10 +54,12 @@ training_args.run_name = generate_snd_run_name(
     shuffle=training_args.shuffle,
     use_graph=model_args.use_graph,
     dynamic_weight=training_args.dynamic_weight,
+    use_cluster_loss=training_args.use_cluster_loss,
 )
 training_args.output_dir = get_snd_output_dir(
     model_name_or_path=model_args.model_name_or_path,
     base_output_dir=training_args.output_dir,
+    run_name=training_args.run_name,
 )
 training_args.logging_dir = os.path.join(
     training_args.output_dir,
@@ -125,23 +128,28 @@ model_config = AutoConfig.from_pretrained(
 
 model_config.use_cache = False
 model_config.model_args = model_args
+dtype = torch.float16
 
 model = Qwen2ModelForSNDPubEmbedding.from_pretrained(
     model_args.model_name_or_path,
     config=model_config,
-    quantization_config=bnb_config,
+    # quantization_config=bnb_config,
     trust_remote_code=True,
     attn_implementation="flash_attention_2",
+    torch_dtype=dtype,
 )
 
 if model_args.use_graph:
     model.add_special_tokens(tokenizer)
 
+# set the module to be trained
 modules_to_save = []
-modules_to_save += "lora"
-modules_to_save += "loss_weight"
+if not model_args.use_graph:
+    modules_to_save.append("lora")
 if model_args.use_graph:
-    modules_to_save += "graph_proj"
+    modules_to_save.append("graph_proj")
+
+training_args.modules_to_save = modules_to_save
 
 
 target_modules = [
@@ -164,9 +172,14 @@ lora_config = LoraConfig(
 
 model = get_peft_model(model, lora_config)
 
-for name, param in model.named_parameters():
-    if "lora" in name:
-        param.requires_grad = True
+# 设置当前模型的权重为可训练
+for module in modules_to_save:
+    for name, param in model.named_parameters():
+        if module in name:
+            print(f"Setting {name} to trainable")
+            param.requires_grad = True
+        else:
+            param.requires_grad = False
 
 if torch.distributed.is_initialized():
     if torch.distributed.get_rank() == 0:
@@ -207,6 +220,32 @@ else:
     is_valid = verify_lora_weights(model)
     if not is_valid:
         raise ValueError("LoRA权重未正确初始化！请检查配置")
+
+
+# load LoRA weights
+if model_args.lora_module_path:
+    module_state_dict = load_file(
+        filename=model_args.lora_module_path,
+    )
+
+    # 使用peft加载LoRA权重
+    set_peft_model_state_dict(model, module_state_dict)
+    logger.info(f"LoRA weights loaded with {len(module_state_dict)} keys.")
+
+if model_args.graph_proj_module_path:
+    graph_proj_state_dict = load_file(
+        filename=model_args.graph_proj_module_path,
+    )
+
+    # 使用peft加载图投影权重
+    missing_keys, unexpected_keys = model.load_state_dict(
+        graph_proj_state_dict,
+        strict=False,
+    )
+
+    logger.info(
+        f"Graph projection weights loaded with {len(graph_proj_state_dict)} keys, with {len(missing_keys)} missing keys and {len(unexpected_keys)} unexpected keys."
+    )
 
 # enable gradient checkpointing
 model.gradient_checkpointing_enable()

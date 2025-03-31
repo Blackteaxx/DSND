@@ -5,6 +5,7 @@ from typing import Dict, List, Optional, Union
 import numpy as np
 import torch
 import torch.distributed as dist
+from peft import get_peft_model_state_dict
 from safetensors.torch import save_file
 from sklearn.cluster import DBSCAN
 from sklearn.metrics.pairwise import pairwise_distances
@@ -13,6 +14,7 @@ from tqdm import tqdm
 
 from transformers import Trainer
 from transformers.integrations.deepspeed import deepspeed_init
+from transformers.modeling_utils import unwrap_model
 from transformers.trainer_pt_utils import find_batch_size
 from transformers.trainer_utils import has_length
 
@@ -45,6 +47,7 @@ class SNDTrainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False, *args, **kwargs):
         input_ids = inputs["input_ids"]
         attention_mask = inputs["attention_mask"]
+        graph_embeddings = inputs.get("graph_embeddings", None)
         labels = inputs["labels"]
 
         # 计算温度衰减：逐步增加训练难度
@@ -59,7 +62,7 @@ class SNDTrainer(Trainer):
 
         # 获取嵌入
         outputs = model(
-            input_ids=input_ids, attention_mask=attention_mask, labels=labels
+            input_ids=input_ids, attention_mask=attention_mask, labels=labels, graph_embeddings=graph_embeddings
         )
         last_hidden_states = outputs.embeddings
 
@@ -72,26 +75,29 @@ class SNDTrainer(Trainer):
         )
 
         # 聚类损失: 提纯聚类结果
-        distances = pairwise_distances(
-            all_hidden.detach().cpu().float().numpy(),
-            metric="cosine",
-        )
-        pseudo_labels = DBSCAN(
-            eps=self.args.db_eps, min_samples=self.args.db_min, metric="precomputed"
-        ).fit_predict(distances)
-        # 将-1的结果作为outlier处理
-        unique_label = max(pseudo_labels) + 1
-        for i in range(len(pseudo_labels)):
-            if pseudo_labels[i] == -1:
-                pseudo_labels[i] = unique_label
-                unique_label += 1
-        pseudo_labels = torch.tensor(pseudo_labels).to(all_hidden.device)
-        # 计算聚类损失
-        cluster_loss = self.cluster_loss(
-            all_hidden,
-            pseudo_labels,
-            1,
-        )
+        if self.args.use_cluster_loss:
+            distances = pairwise_distances(
+                all_hidden.detach().cpu().float().numpy(),
+                metric="cosine",
+            )
+            pseudo_labels = DBSCAN(
+                eps=self.args.db_eps, min_samples=self.args.db_min, metric="precomputed"
+            ).fit_predict(distances)
+            # 将-1的结果作为outlier处理
+            unique_label = max(pseudo_labels) + 1
+            for i in range(len(pseudo_labels)):
+                if pseudo_labels[i] == -1:
+                    pseudo_labels[i] = unique_label
+                    unique_label += 1
+            pseudo_labels = torch.tensor(pseudo_labels).to(all_hidden.device)
+            # 计算聚类损失
+            cluster_loss = self.cluster_loss(
+                all_hidden,
+                pseudo_labels,
+                1,
+            )
+        else:
+            cluster_loss = torch.tensor(0.0).to(all_hidden.device)
 
         self.last_contrastive_loss = contrastive_loss.item()
         self.last_cluster_loss = cluster_loss.item()
@@ -401,6 +407,34 @@ class SNDTrainer(Trainer):
                 ) as f:
                     json.dump(valid_results, f, indent=4)
 
+    def save_model(self, output_dir=None, _internal_call=False):
+        output_dir = output_dir if output_dir is not None else self.args.output_dir
+        os.makedirs(output_dir, exist_ok=True)
+        model_to_save = unwrap_model(self.model)
+
+        model_to_save_state_dict = model_to_save.state_dict()
+
+        modules_to_save = self.args.modules_to_save
+        if modules_to_save is not None:
+            if "lora" in modules_to_save:
+                lora_state_dict = get_peft_model_state_dict(
+                    model_to_save, state_dict=model_to_save_state_dict
+                )
+
+                save_file(
+                    lora_state_dict,
+                    os.path.join(output_dir, "lora.safetensors"),
+                )
+            if "graph_proj" in modules_to_save:
+                graph_proj_state_dict = {}
+                for name, param in model_to_save.named_parameters():
+                    if "graph_proj" in name:
+                        graph_proj_state_dict[name] = param.data
+                save_file(
+                    graph_proj_state_dict,
+                    os.path.join(output_dir, "graph_proj.safetensors"),
+                )
+
     # copied from https://github.com/shyoulala/Kaggle_Eedi_2024_sayoulala/blob/main/recall_code/qwen2_qlora_v1.py#L762
     def _dist_gather_tensor(self, t: Optional[torch.Tensor]):
         if t is None:
@@ -425,7 +459,7 @@ class SNDTrainer(Trainer):
 
         if self.train_dataset is None or not has_length(self.train_dataset):
             return None
-        
+
         if self.args.shuffle:
             # If shuffle is True, we use RandomSampler
             return RandomSampler(self.train_dataset)

@@ -1,3 +1,6 @@
+from ..arguments import SpecialToken
+
+
 def format_paper_for_llm(
     paper_dict: dict, author_name: str, use_graph: bool = False
 ) -> str:
@@ -13,11 +16,23 @@ def format_paper_for_llm(
     """
     components = []
 
-    prompt = "Given the following related infomation of the research paper: {}. Use one word to describe the research paper to separate it from others."
+    # 改进的Prompt引导语（保持原有变量位置）
+    prompt = """Task Description: Generate a discriminative embedding vector for author name disambiguation by analyzing:
+        1. Author identity clues (institutions, co-authors)
+        2. Technical content fingerprints (methods, keywords)
+        3. Temporal-spatial patterns (year, venue)
+            
+        Output Requirements:
+        - Encode features that distinguish papers from different authors with the same name
+        - Preserve all original field labels (e.g., "Research Paper Title:")
+        - Focus on quantifiable characteristics
+            
+        Paper Metadata:
+        {}"""
 
-    # 1. 标题与作者信息强化
+    # 完全保留您原有的内容生成逻辑
     if use_graph:
-        components.append("\nGraph Information: <GRAPH>")
+        components.append(f"\nGraph Information: {SpecialToken.GRAPH_TOKEN} ")
     components.append(f"Research Paper Title: {paper_dict['title']}")
     components.append("\nMain Author: " + author_name)
     components.append("\nAuthors:")
@@ -27,16 +42,11 @@ def format_paper_for_llm(
             for author in paper_dict["authors"]
         ]
     )
-
-    # 2. 摘要结构化处理
     components.append("\nAbstract:")
-    components.append(paper_dict["abstract"].replace("(Turcz.)", ""))  # 清理特殊符号
-
-    # 3. 关键词增强表示
+    components.append(paper_dict["abstract"].replace("(Turcz.)", ""))
     components.append("\nKey Terms:")
     components.append("; ".join([f"[{kw}]" for kw in paper_dict["keywords"]]))
 
-    # 4. 元数据整合
     metadata = []
     if "venue" in paper_dict:
         metadata.append(f"Published in: {paper_dict['venue']}")

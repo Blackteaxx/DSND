@@ -42,13 +42,13 @@ class Qwen2MLP(nn.Module):
 class Qwen2ModelForSNDPubEmbedding(Qwen2PreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
-        self.model_args = config.model_args
+        self.model_args = config.model_args if hasattr(config, "model_args") else None
 
         self.model = Qwen2Model(config)
         self.vocab_size = config.vocab_size
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
-        if self.model_args.use_graph:
+        if self.model_args and self.model_args.use_graph:
             self.graph_proj = self.init_graph_proj(config=config)
 
         # Initialize weights and apply final processing
@@ -79,6 +79,7 @@ class Qwen2ModelForSNDPubEmbedding(Qwen2PreTrainedModel):
         self,
         input_ids: torch.LongTensor = None,
         attention_mask: Optional[torch.Tensor] = None,
+        graph_embeddings: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
         position_ids: Optional[torch.LongTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
@@ -102,9 +103,28 @@ class Qwen2ModelForSNDPubEmbedding(Qwen2PreTrainedModel):
             return_dict if return_dict is not None else self.config.use_return_dict
         )
 
+        inputs_embeds = self.model.embed_tokens(input_ids)
+        inputs_embeds = inputs_embeds.clone()
+
+        # graph projection
+        if self.model_args and self.model_args.use_graph:
+            graph_mask = input_ids == self.graph_token_id
+
+            # convert graph embeddings to the same dtype as the model
+            graph_embeddings = (
+                graph_embeddings.to(inputs_embeds.dtype)
+                if graph_embeddings is not None
+                else None
+            )
+
+            projected_graph_embeddings = self.graph_proj(graph_embeddings)
+
+            # replace the graph token embeddings with the projected graph embeddings
+            inputs_embeds[graph_mask] = projected_graph_embeddings
+
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
         outputs = self.model(
-            input_ids=input_ids,
+            # input_ids=input_ids,
             attention_mask=attention_mask,
             position_ids=position_ids,
             past_key_values=past_key_values,

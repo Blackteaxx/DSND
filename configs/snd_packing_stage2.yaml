@@ -1,12 +1,14 @@
 # 模型相关配置
-model_name_or_path: "/data/name_disambiguation/model/Qwen/Qwen2.5-3B-Instruct"
+model_name_or_path: "/data/name_disambiguation/model/Qwen/Qwen2.5-7B"
 padding_side: "left"
-use_graph: false
+use_graph: true
 dynamic_weight: false
+lora_module_path: "/data/name_disambiguation/model/7B-autoPos-4Pack-0.05Temp-1e-05LR-Sequential/checkpoint-1/lora.safetensors"
+graph_hidden_size: 512
 
 # 数据相关配置
-packing_size: 12
-positive_num: 4
+packing_size: 3
+positive_num: 1
 shuffle: true
 
 # 训练流程控制
@@ -23,7 +25,7 @@ remove_unused_columns: false
 use_cluster_loss: false
 
 # 优化器相关
-learning_rate: 0.00001
+learning_rate: 0.00002
 warmup_ratio: 0.1
 lr_scheduler_type: "cosine"
 
@@ -41,7 +43,7 @@ per_device_train_batch_size: 1
 per_device_eval_batch_size: 1
 gradient_accumulation_steps: 1
 bf16: true
-deepspeed: "/data/name_disambiguation/configs/ds_configs/ds_zero_2.json"
+deepspeed: "/data/name_disambiguation/configs/ds_configs/ds_zero_3.json"
 
 # 日志和输出
 output_dir: "/data/name_disambiguation/model"
