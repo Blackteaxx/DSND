@@ -4,7 +4,7 @@
   "use_graph": false,
   "dynamic_weight": false,
 
-  "packing_size": 12,
+  "packing_size": 16,
   "positive_num": 4,
   "shuffle": true,
 

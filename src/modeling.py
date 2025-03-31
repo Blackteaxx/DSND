@@ -145,6 +145,7 @@ class Qwen2ModelForSNDPubEmbedding(Qwen2PreTrainedModel):
             embeddings=sentence_embeddings,
         )
 
+    # copied from https://huggingface.co/Alibaba-NLP/gte-Qwen2-1.5B-instruct
     def last_token_pool(
         self, last_hidden_states: torch.Tensor, attention_mask: torch.Tensor
     ) -> torch.Tensor:

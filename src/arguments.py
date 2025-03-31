@@ -40,11 +40,12 @@ def generate_snd_run_name(
         生成的run_name字符串
     """
     # 提取模型大小信息
-    model_size = (
-        "7B"
-        if "7B" in model_name_or_path
-        else ("14B" if "14B" in model_name_or_path else "custom")
-    )
+    expected_model_sizes = ["1.5B", "3B", "7B", "14B"]
+    model_size = "custom"
+    for size in expected_model_sizes:
+        if size in model_name_or_path:
+            model_size = size
+            break
 
     # 构造名称组件
     components = [

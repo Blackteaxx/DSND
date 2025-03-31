@@ -21,6 +21,7 @@ def format_paper_for_llm(
         1. Author identity clues (institutions, co-authors)
         2. Technical content fingerprints (methods, keywords)
         3. Temporal-spatial patterns (year, venue)
+        4. High-level graph structual features (if applicable)
             
         Output Requirements:
         - Encode features that distinguish papers from different authors with the same name

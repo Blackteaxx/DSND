@@ -19,7 +19,7 @@ from transformers.trainer_pt_utils import find_batch_size
 from transformers.trainer_utils import has_length
 
 from .criterion import ClusterLossCalculator, ContrastiveLossCalculator
-from .utils.evaluate import hybrid_evaluate, predict
+from .utils.evaluate import hybrid_evaluate
 from .utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -62,7 +62,10 @@ class SNDTrainer(Trainer):
 
         # 获取嵌入
         outputs = model(
-            input_ids=input_ids, attention_mask=attention_mask, labels=labels, graph_embeddings=graph_embeddings
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            labels=labels,
+            graph_embeddings=graph_embeddings,
         )
         last_hidden_states = outputs.embeddings
 
@@ -249,12 +252,12 @@ class SNDTrainer(Trainer):
             best_results = hybrid_evaluate(
                 author_embeddings=author_embeddings,
                 author_labels=author_labels,
+                method="dbscan",
             )
 
             avg_f1 = best_results["avg_f1"]
             predict_results = best_results["predict_results"]
-            db_eps = best_results["db_eps"]
-            db_min = best_results["db_min"]
+            best_params = best_results["params"]
 
             os.makedirs(os.path.join(args.output_dir, "result"), exist_ok=True)
             with open(
@@ -293,13 +296,12 @@ class SNDTrainer(Trainer):
                 "avg_f1": avg_f1,
                 "step": self.state.global_step,
                 "epoch": self.state.epoch,
-                "db_eps": db_eps,
-                "db_min": db_min,
+                "params": best_params,
             }
             self.log(output)
             with open(os.path.join(args.output_dir, "result.txt"), "a") as f:
                 f.write(
-                    f"step:{self.state.global_step}, epoch:{self.state.epoch}, AVG-F1:{avg_f1}, DB-EPS:{db_eps}, DB-MIN:{db_min}\n"
+                    f"step:{self.state.global_step}, epoch:{self.state.epoch}, AVG-F1:{avg_f1}, params: {best_params}\n"
                 )
 
         # ======================== Predict the results of validation set ========================
@@ -358,7 +360,8 @@ class SNDTrainer(Trainer):
                     )
 
                 logger.info("db_eps: %f, db_min: %d", db_eps, db_min)
-                inference_predict_results = predict(author_embeddings, db_eps, db_min)
+                # inference_predict_results = predict(author_embeddings, db_eps, db_min)
+                inference_predict_results = {}
                 logger.info(
                     f"haifeng_qian: {len(inference_predict_results['haifeng_qian'])}"
                 )
