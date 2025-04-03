@@ -1,41 +1,38 @@
 # 模型相关配置
-model_name_or_path: "/data/name_disambiguation/model/Alibaba-NLP/gte-Qwen2-1.5B-instruct"
-padding_side: "left"
-use_graph: true
-use_lora: false
+model_name_or_path: "/data/name_disambiguation/model/BAAI/bge-m3"
+padding_side: "right"
+use_graph: false
 dynamic_weight: false
-lora_module_path: "/data/name_disambiguation/model/1.5B-4Pos-24Pack-0.05Temp-0.99Decay-200DecayStep-1e-05LR-Shuffled/checkpoint-1200/lora.safetensors"
-graph_hidden_size: 512
 
 # 数据相关配置
 packing_size: 24
-positive_num: 8
-shuffle: true
+positive_num: 4
+shuffle: false
 
 # 训练流程控制
 do_predict: false
 resume_from_checkpoint: "/data/name_disambiguation/model/SNDPacking/checkpoint-1"
-num_train_epochs: 1
-save_steps: 200
+num_train_epochs: 40
+save_steps: 100
 save_total_limit: 200
 evaluation_strategy: "steps"
-eval_steps: 200
+eval_steps: 100
 load_best_model_at_end: false
 metric_for_best_model: "avg_f1"
 remove_unused_columns: false
-use_cluster_loss: false
+use_cluster_loss: true
 
 # 优化器相关
-learning_rate: 0.00001
+learning_rate: 0.000008
 warmup_ratio: 0.1
 lr_scheduler_type: "cosine"
 
-# 聚类相关参数
-db_min: 5
+# 预测时聚类相关参数
+db_min: 1
 db_eps: 0.05
 
 # 对比学习温度参数
-temperature: 0.05
+temperature: 0.02
 temperature_decay: 0.99
 temperature_decay_step: 200
 
@@ -44,7 +41,7 @@ per_device_train_batch_size: 1
 per_device_eval_batch_size: 1
 gradient_accumulation_steps: 1
 bf16: true
-deepspeed: "/data/name_disambiguation/configs/ds_configs/ds_zero_3.json"
+deepspeed: "/data/name_disambiguation/configs/ds_configs/ds_zero_3_offload.json"
 
 # 日志和输出
 output_dir: "/data/name_disambiguation/model"

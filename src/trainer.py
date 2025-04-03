@@ -45,11 +45,6 @@ class SNDTrainer(Trainer):
         self.loss_weight.requires_grad = True if self.args.dynamic_weight else False
 
     def compute_loss(self, model, inputs, return_outputs=False, *args, **kwargs):
-        input_ids = inputs["input_ids"]
-        attention_mask = inputs["attention_mask"]
-        graph_embeddings = inputs.get("graph_embeddings", None)
-        labels = inputs["labels"]
-
         # 计算温度衰减：逐步增加训练难度
         if (
             self.state.global_step != 0
@@ -62,12 +57,13 @@ class SNDTrainer(Trainer):
 
         # 获取嵌入
         outputs = model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            labels=labels,
-            graph_embeddings=graph_embeddings,
+            **inputs,
         )
         last_hidden_states = outputs.embeddings
+        labels = inputs["labels"]
+
+        # logger.info(f"embeddings shape: {last_hidden_states.shape}")
+        # logger.info(f"author names: {inputs['author_names']}")
 
         all_hidden = self._dist_gather_tensor(last_hidden_states)
         all_labels = self._dist_gather_tensor(labels)
@@ -177,12 +173,12 @@ class SNDTrainer(Trainer):
                         batch_size = observed_batch_size
 
                 # compute the embeddings
-                inputs_ids = inputs["input_ids"]
-                attention_mask = inputs["attention_mask"]
                 author_names = inputs["author_names"]
                 labels = inputs["labels"]
 
-                outputs = model(input_ids=inputs_ids, attention_mask=attention_mask)
+                outputs = model(
+                    **inputs,
+                )
                 embeddings = outputs.embeddings
                 res = [
                     {
@@ -465,15 +461,15 @@ class SNDTrainer(Trainer):
 
         if self.args.shuffle:
             # If shuffle is True, we use RandomSampler
+            logger.info(
+                f"Using RandomSampler for training dataset: {self.train_dataset.__class__.__name__}"
+            )
             return RandomSampler(self.train_dataset)
 
-        if self.args.local_rank != -1 or self.args.world_size > 1:
-            # When using distributed training, we need to use a DistributedSampler
-            # to ensure that each process gets a different subset of the data.
-            return SequentialSampler(self.train_dataset)
-        else:
-            # If not using distributed training, we can use a RandomSampler
-            return RandomSampler(self.train_dataset)
+        logger.info(
+            f"Using SequentialSampler for training dataset: {self.train_dataset.__class__.__name__}"
+        )
+        return SequentialSampler(self.train_dataset)
 
     # copied from transformers/trainer.py
     def _maybe_log_save_evaluate(

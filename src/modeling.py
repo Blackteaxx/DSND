@@ -4,10 +4,18 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 
-from transformers import Qwen2Model, Qwen2PreTrainedModel
+from transformers import (
+    Qwen2Model,
+    Qwen2PreTrainedModel,
+    XLMRobertaModel,
+    XLMRobertaPreTrainedModel,
+)
 from transformers.utils import ModelOutput
 
 from .arguments import SpecialToken
+from .utils.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -26,17 +34,18 @@ class Qwen2MLP(nn.Module):
         self.graph_hidden_size = config.model_args.graph_hidden_size
         self.intermediate_size = config.hidden_size * 2
         self.hidden_size = config.hidden_size
-        self.gate_proj = nn.Linear(
+
+        self.g_proj = nn.Linear(
             self.graph_hidden_size, self.intermediate_size, bias=False
         )
-        self.up_proj = nn.Linear(
+        self.u_proj = nn.Linear(
             self.graph_hidden_size, self.intermediate_size, bias=False
         )
-        self.down_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
+        self.d_proj = nn.Linear(self.intermediate_size, self.hidden_size, bias=False)
         self.act_fn = nn.SiLU()
 
     def forward(self, x):
-        return self.down_proj(self.act_fn(self.gate_proj(x)) * self.up_proj(x))
+        return self.d_proj(self.act_fn(self.g_proj(x)) * self.u_proj(x))
 
 
 class Qwen2ModelForSNDPubEmbedding(Qwen2PreTrainedModel):
@@ -45,6 +54,7 @@ class Qwen2ModelForSNDPubEmbedding(Qwen2PreTrainedModel):
         self.model_args = config.model_args if hasattr(config, "model_args") else None
 
         self.model = Qwen2Model(config)
+
         self.vocab_size = config.vocab_size
         self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
 
@@ -88,6 +98,8 @@ class Qwen2ModelForSNDPubEmbedding(Qwen2PreTrainedModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        *args,
+        **kwargs,
     ) -> Union[Tuple, SNDOutputWithPast]:
         output_attentions = (
             output_attentions
@@ -103,12 +115,19 @@ class Qwen2ModelForSNDPubEmbedding(Qwen2PreTrainedModel):
             return_dict if return_dict is not None else self.config.use_return_dict
         )
 
-        inputs_embeds = self.model.embed_tokens(input_ids)
+        embed_tokens = self.get_input_embeddings()
+        inputs_embeds = embed_tokens(input_ids)
         inputs_embeds = inputs_embeds.clone()
 
         # graph projection
         if self.model_args and self.model_args.use_graph:
+            # logger.info("input_ids: %s", input_ids)
+            # logger.info("graph token id: %s", self.graph_token_id)
             graph_mask = input_ids == self.graph_token_id
+
+            # logger.info(
+            #     f"graph mask sum: {graph_mask.sum()}, graph token id: {self.graph_token_id}"
+            # )
 
             # convert graph embeddings to the same dtype as the model
             graph_embeddings = (
@@ -165,3 +184,104 @@ class Qwen2ModelForSNDPubEmbedding(Qwen2PreTrainedModel):
 
     def gradient_checkpointing_enable(self, **kwargs):
         self.model.gradient_checkpointing_enable(**kwargs)
+
+
+class XLMRobertaModelForSNDPubEmbedding(XLMRobertaPreTrainedModel):
+    _tied_weights_keys = ["predictions.decoder.bias", "cls.predictions.decoder.weight"]
+
+    def __init__(self, config):
+        super().__init__(config)
+        self.model_args = config.model_args if hasattr(config, "model_args") else None
+
+        self.roberta = XLMRobertaModel(config, add_pooling_layer=False)
+        if self.model_args and self.model_args.use_graph:
+            self.graph_proj = self.init_graph_proj(config=config)
+
+        # Initialize weights and apply final processing
+        self.post_init()
+
+    def get_input_embeddings(self):
+        return self.roberta.get_input_embeddings()
+
+    def forward(
+        self,
+        input_ids: Optional[torch.LongTensor] = None,
+        attention_mask: Optional[torch.FloatTensor] = None,
+        graph_embeddings: Optional[torch.FloatTensor] = None,
+        token_type_ids: Optional[torch.LongTensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        head_mask: Optional[torch.FloatTensor] = None,
+        inputs_embeds: Optional[torch.FloatTensor] = None,
+        encoder_hidden_states: Optional[torch.FloatTensor] = None,
+        encoder_attention_mask: Optional[torch.FloatTensor] = None,
+        labels: Optional[torch.LongTensor] = None,
+        past_key_values: Tuple[Tuple[torch.FloatTensor]] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        *args,
+        **kwargs,
+    ) -> Union[Tuple[torch.Tensor], SNDOutputWithPast]:
+        return_dict = (
+            return_dict if return_dict is not None else self.config.use_return_dict
+        )
+
+        embed_tokens = self.get_input_embeddings()
+        inputs_embeds = embed_tokens(input_ids)
+        inputs_embeds = inputs_embeds.clone()
+
+        # graph projection
+        if self.model_args and self.model_args.use_graph:
+            # logger.info("input_ids: %s", input_ids)
+            # logger.info("graph token id: %s", self.graph_token_id)
+            graph_mask = input_ids == self.graph_token_id
+
+            # logger.info(
+            #     f"graph mask sum: {graph_mask.sum()}, graph token id: {self.graph_token_id}"
+            # )
+
+            # convert graph embeddings to the same dtype as the model
+            graph_embeddings = (
+                graph_embeddings.to(inputs_embeds.dtype)
+                if graph_embeddings is not None
+                else None
+            )
+
+            projected_graph_embeddings = self.graph_proj(graph_embeddings)
+
+            # replace the graph token embeddings with the projected graph embeddings
+            inputs_embeds[graph_mask] = projected_graph_embeddings
+
+        # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
+        outputs = self.roberta(
+            # input_ids,
+            attention_mask=attention_mask,
+            token_type_ids=token_type_ids,
+            position_ids=position_ids,
+            head_mask=head_mask,
+            inputs_embeds=inputs_embeds,
+            encoder_hidden_states=encoder_hidden_states,
+            encoder_attention_mask=encoder_attention_mask,
+            past_key_values=past_key_values,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+        )
+
+        last_hidden_states = outputs.last_hidden_state
+        sentence_embeddings = last_hidden_states[:, 0, :]
+
+        return SNDOutputWithPast(
+            past_key_values=outputs.past_key_values,
+            last_hidden_states=last_hidden_states,
+            attentions=outputs.attentions,
+            embeddings=sentence_embeddings,
+        )
+
+    def gradient_checkpointing_enable(self, **kwargs):
+        self.roberta.gradient_checkpointing_enable(**kwargs)
+
+    def enable_input_require_grads(self):
+        self.roberta.enable_input_require_grads()

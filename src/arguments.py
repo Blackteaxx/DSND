@@ -40,16 +40,39 @@ def generate_snd_run_name(
         生成的run_name字符串
     """
     # 提取模型大小信息
-    expected_model_sizes = ["1.5B", "3B", "7B", "14B"]
+    expected_model_sizes = [
+        "1.5B",
+        "3B",
+        "7B",
+        "14B",
+    ]
     model_size = "custom"
     for size in expected_model_sizes:
         if size in model_name_or_path:
             model_size = size
             break
 
+    # 提取模型名称
+    expected_model_names = [
+        "LLaMA",
+        "Llama",
+        "Mistral",
+        "Mistral-7B",
+        "Llama-2",
+        "Qwen",
+        "bge",
+        "BGE",
+    ]
+    model_name = "custom"
+    for name in expected_model_names:
+        if name in model_name_or_path:
+            model_name = name
+            break
+
     # 构造名称组件
     components = [
         model_size,
+        model_name,
         f"{positive_num if positive_num is not None else 'auto'}Pos",
         f"{packing_size}Pack",
         f"{temperature:.2f}Temp",
@@ -170,6 +193,11 @@ class ModelArguments:
     use_graph: bool = field(
         default=False,
         metadata={"help": "Whether to use graph data."},
+    )
+
+    use_lora: bool = field(
+        default=False,
+        metadata={"help": "Whether to use lora."},
     )
 
     lora_module_path: str = field(

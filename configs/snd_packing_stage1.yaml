@@ -2,6 +2,7 @@
 model_name_or_path: "/data/name_disambiguation/model/Alibaba-NLP/gte-Qwen2-1.5B-instruct"
 padding_side: "left"
 use_graph: false
+use_lora: true
 dynamic_weight: false
 
 # 数据相关配置

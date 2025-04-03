@@ -2,15 +2,16 @@
 model_name_or_path: "/data/name_disambiguation/model/Alibaba-NLP/gte-Qwen2-1.5B-instruct"
 padding_side: "left"
 use_graph: true
-use_lora: false
+use_lora: true
 dynamic_weight: false
 lora_module_path: "/data/name_disambiguation/model/1.5B-4Pos-24Pack-0.05Temp-0.99Decay-200DecayStep-1e-05LR-Shuffled/checkpoint-1200/lora.safetensors"
+graph_proj_module_path: "/data/name_disambiguation/model/1.5B-8Pos-24Pack-0.05Temp-0.99Decay-200DecayStep-1e-05LR-Shuffled-Graph/checkpoint-600/graph_proj.safetensors"
 graph_hidden_size: 512
 
 # 数据相关配置
-packing_size: 24
-positive_num: 8
-shuffle: true
+packing_size: 36
+positive_num: 1
+shuffle: false
 
 # 训练流程控制
 do_predict: false

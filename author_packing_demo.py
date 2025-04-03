@@ -2,7 +2,7 @@ import os
 from argparse import ArgumentParser
 
 import torch
-from peft import LoraConfig, get_peft_model, set_peft_model_state_dict
+from peft import set_peft_model_state_dict
 from safetensors.torch import load_file
 from src.arguments import (
     DataArguments,
@@ -12,8 +12,8 @@ from src.arguments import (
     generate_snd_run_name,
     get_snd_output_dir,
 )
-from src.dataset import SNDInferenceDataset, SNDPackingCollator, SNDPackingDataset
-from src.modeling import Qwen2ModelForSNDPubEmbedding
+from src.dataset import SNDAuthorPackingDataset, SNDInferenceDataset, SNDPackingCollator
+from src.modeling import XLMRobertaModelForSNDPubEmbedding
 from src.trainer import SNDTrainer
 from src.utils.add_special_token import smart_tokenizer_and_embedding_resize
 from src.utils.logger import distributed_logging, get_logger
@@ -80,17 +80,6 @@ tokenizer = AutoTokenizer.from_pretrained(
 )
 tokenizer.padding_side = model_args.padding_side
 
-if "Llama" in model_args.model_name_or_path:
-    tokenizer.pad_token = tokenizer.eos_token
-
-# load model
-bnb_config = BitsAndBytesConfig(
-    load_in_4bit=True,
-    bnb_4bit_use_double_quant=True,
-    bnb_4bit_quant_type="nf4",
-    bnb_4bit_compute_dtype=torch.bfloat16,
-)
-
 model_config = AutoConfig.from_pretrained(
     model_args.model_name_or_path,
 )
@@ -99,13 +88,19 @@ model_config.use_cache = False
 model_config.model_args = model_args
 dtype = torch.float16
 
-model = Qwen2ModelForSNDPubEmbedding.from_pretrained(
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_use_double_quant=True,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_compute_dtype=torch.bfloat16,
+)
+
+model = XLMRobertaModelForSNDPubEmbedding.from_pretrained(
     model_args.model_name_or_path,
     config=model_config,
-    # quantization_config=bnb_config,
     trust_remote_code=True,
-    attn_implementation="flash_attention_2",
     torch_dtype=dtype,
+    # quantization_config=bnb_config,
 )
 
 # add special tokens
@@ -121,28 +116,8 @@ if model_args.use_graph:
     model.add_special_tokens(tokenizer)
 
 
-target_modules = [
-    "q_proj",
-    "k_proj",
-    "v_proj",
-    "o_proj",
-    "gate_proj",
-    "up_proj",
-    "down_proj",
-]
-lora_config = LoraConfig(
-    r=64,
-    lora_alpha=128,
-    target_modules=target_modules,
-    lora_dropout=0.05,
-    bias="none",
-    task_type="CASUAL_LM",
-)
-
-model = get_peft_model(model, lora_config)
-
 # load dataset
-train_dataset = SNDPackingDataset(
+train_dataset = SNDAuthorPackingDataset(
     data_args=data_args,
     tokenizer=tokenizer,
     mode="train",
@@ -150,7 +125,7 @@ train_dataset = SNDPackingDataset(
     use_graph=model_args.use_graph,
 )
 
-eval_dataset = SNDPackingDataset(
+eval_dataset = SNDAuthorPackingDataset(
     data_args=data_args,
     tokenizer=tokenizer,
     mode="dev",
@@ -166,71 +141,12 @@ inference_dataset = SNDInferenceDataset(
 
 
 # set the module to be trained
-modules_to_save = []
-if model_args.use_lora:
-    modules_to_save.append("lora")
-if model_args.use_graph:
-    modules_to_save.append("graph_proj")
+modules_to_save = ["full"]
 
 training_args.modules_to_save = modules_to_save
 
 logger.info(f"模型 {model_args.model_name_or_path} 的训练模块为: {modules_to_save}")
-model.requires_grad = False
-
-
-# 精确匹配模块层级结构
-def set_trainable_params(model, patterns):
-    for name, param in model.named_parameters():
-        if any(p in name for p in patterns):
-            param.requires_grad = True
-            logger.info(f"✅ 可训练参数: {name}")
-        else:
-            param.requires_grad = False
-
-
-set_trainable_params(model, modules_to_save)
-
-
-if torch.distributed.is_initialized():
-    if torch.distributed.get_rank() == 0:
-        model.print_trainable_parameters()
-else:
-    model.print_trainable_parameters()
-
-
-def verify_lora_weights(model):
-    """检查LoRA权重是否正确初始化"""
-    empty_weights = []
-    valid_weights = []
-
-    for name, param in model.named_parameters():
-        if "lora_" in name:
-            if param.numel() == 0 or any(s == 0 for s in param.shape):
-                empty_weights.append(name)
-            else:
-                valid_weights.append(name)
-
-    logger.info(
-        f"找到 {len(valid_weights)} 个有效LoRA权重，{len(empty_weights)} 个空LoRA权重"
-    )
-    if empty_weights:
-        logger.info(f"空LoRA权重示例:, {empty_weights[:3]}")
-    if valid_weights:
-        logger.info(f"有效LoRA权重示例: {valid_weights[:3]}")
-
-    return len(valid_weights) > 0
-
-
-if torch.distributed.is_initialized():
-    if torch.distributed.get_rank() == 0:
-        is_valid = verify_lora_weights(model)
-        if not is_valid:
-            raise ValueError("LoRA权重未正确初始化！请检查配置")
-else:
-    is_valid = verify_lora_weights(model)
-    if not is_valid:
-        raise ValueError("LoRA权重未正确初始化！请检查配置")
-
+model.requires_grad = True
 
 # load LoRA weights
 if model_args.lora_module_path:
@@ -262,32 +178,6 @@ model.gradient_checkpointing_enable()
 model.enable_input_require_grads()
 
 
-# create hook for gradient checkpointing
-def print_grad_norms(model):
-    total_norm = 0.0
-    for name, param in model.named_parameters():
-        if param.requires_grad:
-            param_norm = param.grad.data.norm(2).item()
-            total_norm += param_norm**2
-            logger.info(f"Gradient norm for {name}: {param_norm:.4f}")
-
-    total_norm = total_norm ** (1.0 / 2)
-    logger.info(f"Total gradient norm: {total_norm:.4f}")
-
-
-# register the hook
-def register_hook(model):
-    def hook(module, grad_input, grad_output):
-        print_grad_norms(model)
-
-    for name, module in model.named_modules():
-        if isinstance(module, torch.nn.Linear):
-            module.register_full_backward_hook(hook)
-
-
-# register_hook(model)
-
-
 trainer = SNDTrainer(
     model=model,
     args=training_args,
@@ -299,7 +189,6 @@ trainer = SNDTrainer(
 
 
 def train():
-    # trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
     trainer.train()
 
 
