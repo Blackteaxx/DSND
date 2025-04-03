@@ -1,13 +1,13 @@
 # 模型相关配置
-model_name_or_path: "/data/name_disambiguation/model/Alibaba-NLP/gte-Qwen2-1.5B-instruct"
+model_name_or_path: "/data/name_disambiguation/model/Qwen/Qwen2.5-7B-Instruct"
 padding_side: "left"
 use_graph: false
 use_lora: true
 dynamic_weight: false
 
 # 数据相关配置
-packing_size: 24
-positive_num: 4
+packing_size: 12
+positive_num: 1
 shuffle: true
 
 # 训练流程控制
@@ -24,7 +24,7 @@ remove_unused_columns: false
 use_cluster_loss: false
 
 # 优化器相关
-learning_rate: 0.00001
+learning_rate: 0.000004
 warmup_ratio: 0.1
 lr_scheduler_type: "cosine"
 

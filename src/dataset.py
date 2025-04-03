@@ -210,13 +210,24 @@ class SNDInferenceDataset(Dataset):
         self,
         tokenizer: PreTrainedTokenizer,
         data_args: DataArguments,
+        mode: Literal["train", "dev", "valid", "test"] = "train",
         use_graph: bool = False,
     ):
         self.tokenizer = tokenizer
         self.data_args = data_args
+        self.use_graph = use_graph
 
-        with open(os.path.join(data_args.names_pub_dir, "valid.json"), "r") as f:
+        graph_embedding_path = data_args.graph_feature_path
+
+        with open(os.path.join(data_args.names_pub_dir, f"{mode}.json"), "r") as f:
             self.valid_names_pub = json.load(f)
+
+        if self.use_graph:
+            if not os.path.exists(graph_embedding_path):
+                raise FileNotFoundError(
+                    f"Graph embedding file required for {self.mode} mode: {graph_embedding_path}"
+                )
+            self.pub_graph_embeddings = load_file(graph_embedding_path)
 
         unpacked_data = []
         for author_name, pubs in tqdm(
@@ -247,25 +258,30 @@ class SNDInferenceDataset(Dataset):
             max_length=2048,
             return_tensors="pt",
         )
-        input_ids, attention_mask = (
-            tokenized_text_features["input_ids"],
-            tokenized_text_features["attention_mask"],
-        )
-
-        batch = {
-            "input_ids": input_ids,
-            "attention_mask": attention_mask,
-        }
+        batch = {k: v for k, v in tokenized_text_features.items()}
 
         batch["author_names"] = [d["author_name"] for d in data]
         batch["pub_ids"] = [d["pub_id"] for d in data]
+
+        if self.use_graph:
+            graph_embeddings = [d["graph_embedding"] for d in data]
+            graph_embeddings = torch.stack(graph_embeddings)
+            batch["graph_embeddings"] = graph_embeddings
+
         return batch
 
     def _get_features(self, paper_dict, author_name):
-        text_feature = format_paper_for_llm(paper_dict, author_name)
+        text_feature = format_paper_for_llm(
+            paper_dict, author_name, use_graph=self.use_graph
+        )
         features = {"text_feature": text_feature}
         features["author_name"] = author_name
         features["pub_id"] = paper_dict["id"]
+
+        if self.use_graph:
+            graph_embedding = self.pub_graph_embeddings[paper_dict["id"]]
+            features["graph_embedding"] = graph_embedding
+
         return features
 
 

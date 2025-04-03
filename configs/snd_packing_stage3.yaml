@@ -5,7 +5,7 @@ use_graph: true
 use_lora: true
 dynamic_weight: false
 lora_module_path: "/data/name_disambiguation/model/1.5B-4Pos-24Pack-0.05Temp-0.99Decay-200DecayStep-1e-05LR-Shuffled/checkpoint-1200/lora.safetensors"
-graph_proj_module_path: "/data/name_disambiguation/model/1.5B-8Pos-24Pack-0.05Temp-0.99Decay-200DecayStep-1e-05LR-Shuffled-Graph/checkpoint-600/graph_proj.safetensors"
+graph_proj_module_path: "/data/name_disambiguation/model/1.5B-Qwen-1Pos-36Pack-0.05Temp-0.99Decay-200DecayStep-1e-05LR-Shuffled-Graph/checkpoint-800/graph_proj.safetensors"
 graph_hidden_size: 512
 
 # 数据相关配置
@@ -27,7 +27,7 @@ remove_unused_columns: false
 use_cluster_loss: false
 
 # 优化器相关
-learning_rate: 0.00001
+learning_rate: 0.000002
 warmup_ratio: 0.1
 lr_scheduler_type: "cosine"
 
@@ -45,7 +45,7 @@ per_device_train_batch_size: 1
 per_device_eval_batch_size: 1
 gradient_accumulation_steps: 1
 bf16: true
-deepspeed: "/data/name_disambiguation/configs/ds_configs/ds_zero_3.json"
+deepspeed: "/data/name_disambiguation/configs/ds_configs/ds_zero_2.json"
 
 # 日志和输出
 output_dir: "/data/name_disambiguation/model"

@@ -97,7 +97,7 @@ model_config = AutoConfig.from_pretrained(
 
 model_config.use_cache = False
 model_config.model_args = model_args
-dtype = torch.float16
+dtype = torch.bfloat16
 
 model = Qwen2ModelForSNDPubEmbedding.from_pretrained(
     model_args.model_name_or_path,
@@ -106,7 +106,7 @@ model = Qwen2ModelForSNDPubEmbedding.from_pretrained(
     trust_remote_code=True,
     attn_implementation="flash_attention_2",
     torch_dtype=dtype,
-)
+).to("cuda")
 
 # add special tokens
 if model_args.use_graph:

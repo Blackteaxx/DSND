@@ -1,0 +1,203 @@
+from argparse import ArgumentParser
+
+import torch
+from peft import LoraConfig, get_peft_model, set_peft_model_state_dict
+from safetensors.torch import load_file, save_file
+from src.arguments import (
+    DataArguments,
+    ModelArguments,
+    SNDTrainingArguments,
+    SpecialToken,
+)
+from src.dataset import SNDInferenceDataset
+from src.modeling import Qwen2ModelForSNDPubEmbedding
+from src.utils.add_special_token import smart_tokenizer_and_embedding_resize
+from src.utils.logger import distributed_logging, get_logger
+from tqdm import tqdm
+
+from transformers import (
+    AutoConfig,
+    AutoTokenizer,
+    BitsAndBytesConfig,
+    HfArgumentParser,
+)
+
+logger = get_logger(__name__)
+parser = ArgumentParser()
+
+parser.add_argument(
+    "--config",
+    type=str,
+    required=True,
+    help="The path to the config file.",
+)
+
+args = parser.parse_args()
+
+config_path = args.config
+
+data_args, model_args, training_args = HfArgumentParser(
+    (DataArguments, ModelArguments, SNDTrainingArguments)
+).parse_yaml_file(config_path)
+
+
+distributed_logging(
+    logger,
+    f"Data Arguments: {data_args}",
+    f"Model Arguments: {model_args}",
+)
+
+# load tokenizer
+tokenizer = AutoTokenizer.from_pretrained(
+    model_args.model_name_or_path,
+)
+tokenizer.padding_side = model_args.padding_side
+
+if "Llama" in model_args.model_name_or_path:
+    tokenizer.pad_token = tokenizer.eos_token
+
+# load model
+bnb_config = BitsAndBytesConfig(
+    load_in_4bit=True,
+    bnb_4bit_use_double_quant=True,
+    bnb_4bit_quant_type="nf4",
+    bnb_4bit_compute_dtype=torch.bfloat16,
+)
+
+model_config = AutoConfig.from_pretrained(
+    model_args.model_name_or_path,
+)
+
+model_config.use_cache = False
+model_config.model_args = model_args
+dtype = torch.bfloat16
+
+model = Qwen2ModelForSNDPubEmbedding.from_pretrained(
+    model_args.model_name_or_path,
+    config=model_config,
+    # quantization_config=bnb_config,
+    trust_remote_code=True,
+    attn_implementation="flash_attention_2",
+    torch_dtype=dtype,
+)
+model.cuda()
+model.eval()
+
+# add special tokens
+if model_args.use_graph:
+    special_tokens_dict = {"additional_special_tokens": [SpecialToken.GRAPH_TOKEN]}
+    # add speical token to embedding
+    smart_tokenizer_and_embedding_resize(
+        special_tokens_dict=special_tokens_dict,
+        tokenizer=tokenizer,
+        model=model,
+    )
+
+    model.add_special_tokens(tokenizer)
+
+
+target_modules = [
+    "q_proj",
+    "k_proj",
+    "v_proj",
+    "o_proj",
+    "gate_proj",
+    "up_proj",
+    "down_proj",
+]
+lora_config = LoraConfig(
+    r=64,
+    lora_alpha=128,
+    target_modules=target_modules,
+    lora_dropout=0.05,
+    bias="none",
+    task_type="CASUAL_LM",
+)
+
+model = get_peft_model(model, lora_config)
+
+# load dataset
+train_inference_dataset = SNDInferenceDataset(
+    tokenizer=tokenizer,
+    data_args=data_args,
+    mode="train",
+    use_graph=model_args.use_graph,
+)
+dev_inference_dataset = SNDInferenceDataset(
+    tokenizer=tokenizer,
+    data_args=data_args,
+    mode="dev",
+    use_graph=model_args.use_graph,
+)
+
+
+model.requires_grad = False
+model.eval()
+
+
+# load LoRA weights
+if model_args.lora_module_path:
+    module_state_dict = load_file(
+        filename=model_args.lora_module_path,
+    )
+
+    # 使用peft加载LoRA权重
+    set_peft_model_state_dict(model, module_state_dict)
+    logger.info(f"LoRA weights loaded with {len(module_state_dict)} keys.")
+
+if model_args.graph_proj_module_path:
+    graph_proj_state_dict = load_file(
+        filename=model_args.graph_proj_module_path,
+    )
+
+    # 使用peft加载图投影权重
+    missing_keys, unexpected_keys = model.load_state_dict(
+        graph_proj_state_dict,
+        strict=False,
+    )
+
+    logger.info(
+        f"Graph projection weights loaded with {len(graph_proj_state_dict)} keys, with {len(missing_keys)} missing keys and {len(unexpected_keys)} unexpected keys."
+    )
+
+embeddings = {}
+for i in tqdm(range(len(train_inference_dataset)), desc="Train Inferencing."):
+    data = train_inference_dataset[i]
+    pub_ids = data["pub_ids"]
+
+    for key in data.keys():
+        if isinstance(data[key], torch.Tensor):
+            data[key] = data[key].cuda()
+
+    with torch.no_grad():
+        outputs = model(
+            **data,
+        )
+
+    pub_embeddings = outputs.embeddings
+
+    for j in range(len(pub_ids)):
+        pub_id = pub_ids[j]
+        embeddings[pub_id] = pub_embeddings[j].cpu()
+
+for i in tqdm(range(len(dev_inference_dataset)), desc="Dev Inferencing."):
+    data = dev_inference_dataset[i]
+    pub_ids = data["pub_ids"]
+
+    for key in data.keys():
+        if isinstance(data[key], torch.Tensor):
+            data[key] = data[key].cuda()
+
+    with torch.no_grad():
+        outputs = model(
+            **data,
+        )
+
+    pub_embeddings = outputs.embeddings
+
+    for j in range(len(pub_ids)):
+        pub_id = pub_ids[j]
+        embeddings[pub_id] = pub_embeddings[j].cpu()
+
+# save embeddings
+save_file(embeddings, "data/SND/inference_embeddings.safetensors")
