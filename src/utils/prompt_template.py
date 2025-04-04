@@ -91,9 +91,9 @@ def format_paper_for_llm(
     components.append("; ".join([f"[{kw}]" for kw in paper_dict["keywords"]]))
 
     metadata = []
-    if "venue" in paper_dict:
+    if "venue" in paper_dict and paper_dict["venue"] != "":
         metadata.append(f"Published in: {paper_dict['venue']}")
-    if "year" in paper_dict:
+    if "year" in paper_dict and paper_dict["year"] != "":
         metadata.append(f"Year: {paper_dict['year']}")
     if metadata:
         components.append("\n" + " | ".join(metadata))

@@ -262,3 +262,10 @@ class SNDTrainingArguments(TrainingArguments):
         default=True,
         metadata={"help": "Whether to use cluster loss."},
     )
+
+@dataclass
+class InferenceArguments:
+    mode: str = field(
+        default="train",
+        metadata={"help": "The mode of the inference."},
+    )

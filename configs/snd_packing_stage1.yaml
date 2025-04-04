@@ -7,7 +7,7 @@ enable_quantization: true
 dynamic_weight: false
 
 # 数据相关配置
-packing_size: 6
+packing_size: 8
 positive_num: 1
 shuffle: true
 
@@ -24,7 +24,7 @@ remove_unused_columns: false
 use_cluster_loss: false
 
 # 优化器相关
-learning_rate: 0.000009
+learning_rate: 0.000008
 warmup_ratio: 0.1
 lr_scheduler_type: "cosine"
 

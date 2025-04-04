@@ -40,7 +40,7 @@ CLUSTERING_METHODS = {
         name="DBSCAN",
         estimator=DBSCAN,
         param_grid={
-            "eps": [0.05] + list(np.linspace(0.01, 0.16, 10)),
+            "eps": list(np.linspace(0.05, 0.15, 10)),
             "min_samples": list(range(1, 6)),
         },
     ),
@@ -75,7 +75,7 @@ def evaluate_single_params(
         )
         if pbar_wrapper:
             pbar_wrapper.update(1)
-        return params, avg_f1, predict_results
+        return params, avg_f1, predict_results, detailed_info
     except Exception as e:
         logger.error(f"Error evaluating params {params}: {str(e)}")
         return params, 0.0, {}
@@ -109,6 +109,7 @@ def hybrid_evaluate(
         "avg_f1": 0,
         "predict_results": None,
         "method": config.name,
+        "datailed_info": "",
     }
 
     # 线程安全的进度条
@@ -130,18 +131,20 @@ def hybrid_evaluate(
             )
         # 收集结果
         for future in as_completed(futures):
-            params, avg_f1, predict_results = future.result()
+            params, avg_f1, predict_results, detailed_info = future.result()
             if avg_f1 > best_results["avg_f1"]:
                 best_results.update(
                     {
                         "params": params,
                         "avg_f1": avg_f1,
                         "predict_results": predict_results,
+                        "datailed_info": detailed_info,
                     }
                 )
                 logger.info(f"New best params: {params}, F1: {avg_f1:.4f}")
     logger.info(f"Best {config.name} params: {best_results['params']}")
     logger.info(f"Best Pairwise F1: {best_results['avg_f1']:.4f}")
+    logger.info(f"Best detailed info:\n{best_results['datailed_info']}")
     return best_results
 
 

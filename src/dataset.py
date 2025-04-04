@@ -210,7 +210,7 @@ class SNDInferenceDataset(Dataset):
         self,
         tokenizer: PreTrainedTokenizer,
         data_args: DataArguments,
-        mode: Literal["train", "dev", "valid", "test"] = "train",
+        mode: Literal["train", "dev", "valid", "test", "private"] = "train",
         use_graph: bool = False,
     ):
         self.tokenizer = tokenizer
@@ -220,7 +220,7 @@ class SNDInferenceDataset(Dataset):
         graph_embedding_path = data_args.graph_feature_path
 
         with open(os.path.join(data_args.names_pub_dir, f"{mode}.json"), "r") as f:
-            self.valid_names_pub = json.load(f)
+            self.valid_names_pub = json.load(fp=f)
 
         if self.use_graph:
             if not os.path.exists(graph_embedding_path):
@@ -251,12 +251,16 @@ class SNDInferenceDataset(Dataset):
         text_features = [d["text_feature"] for d in data]
 
         # Tokenize the text features
-        tokenized_text_features = self.tokenizer(
-            text_features,
-            padding=True,
-            truncation=True,
-            max_length=2048,
-            return_tensors="pt",
+        tokenized_text_features = (
+            self.tokenizer(
+                text_features,
+                padding=True,
+                truncation=True,
+                max_length=2048,
+                return_tensors="pt",
+            )
+            if self.tokenizer
+            else {"text_features": text_features}
         )
         batch = {k: v for k, v in tokenized_text_features.items()}
 

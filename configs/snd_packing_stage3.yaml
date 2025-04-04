@@ -1,21 +1,20 @@
 # 模型相关配置
-model_name_or_path: "/data/name_disambiguation/model/Alibaba-NLP/gte-Qwen2-1.5B-instruct"
+model_name_or_path: "/data/name_disambiguation/model/Alibaba-NLP/gte-Qwen2-7B-instruct"
 padding_side: "left"
 use_graph: true
-use_lora: true
+use_lora: false
+lora_module_path: "/data/name_disambiguation/model/7B-Qwen-1Pos-6Pack-0.05Temp-9e-06LR-Shuffled/checkpoint-1000/lora.safetensors"
+enable_quantization: false
 dynamic_weight: false
-lora_module_path: "/data/name_disambiguation/model/1.5B-4Pos-24Pack-0.05Temp-0.99Decay-200DecayStep-1e-05LR-Shuffled/checkpoint-1200/lora.safetensors"
-graph_proj_module_path: "/data/name_disambiguation/model/1.5B-Qwen-1Pos-36Pack-0.05Temp-0.99Decay-200DecayStep-1e-05LR-Shuffled-Graph/checkpoint-800/graph_proj.safetensors"
 graph_hidden_size: 512
 
 # 数据相关配置
-packing_size: 36
+packing_size: 4
 positive_num: 1
 shuffle: false
 
 # 训练流程控制
 do_predict: false
-resume_from_checkpoint: "/data/name_disambiguation/model/SNDPacking/checkpoint-1"
 num_train_epochs: 1
 save_steps: 200
 save_total_limit: 200
@@ -27,7 +26,7 @@ remove_unused_columns: false
 use_cluster_loss: false
 
 # 优化器相关
-learning_rate: 0.000002
+learning_rate: 0.000009
 warmup_ratio: 0.1
 lr_scheduler_type: "cosine"
 
@@ -37,7 +36,7 @@ db_eps: 0.05
 
 # 对比学习温度参数
 temperature: 0.05
-temperature_decay: 0.99
+temperature_decay: 1
 temperature_decay_step: 200
 
 # 硬件/性能配置
