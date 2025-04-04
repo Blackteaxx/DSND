@@ -1,18 +1,18 @@
 # 模型相关配置
-model_name_or_path: "/data/name_disambiguation/model/Qwen/Qwen2.5-7B-Instruct"
+model_name_or_path: "/data/name_disambiguation/model/Alibaba-NLP/gte-Qwen2-7B-instruct"
 padding_side: "left"
 use_graph: false
 use_lora: true
+enable_quantization: true
 dynamic_weight: false
 
 # 数据相关配置
-packing_size: 12
+packing_size: 6
 positive_num: 1
 shuffle: true
 
 # 训练流程控制
 do_predict: false
-resume_from_checkpoint: "/data/name_disambiguation/model/SNDPacking/checkpoint-1"
 num_train_epochs: 1
 save_steps: 200
 save_total_limit: 200
@@ -24,7 +24,7 @@ remove_unused_columns: false
 use_cluster_loss: false
 
 # 优化器相关
-learning_rate: 0.000004
+learning_rate: 0.000009
 warmup_ratio: 0.1
 lr_scheduler_type: "cosine"
 
@@ -34,7 +34,7 @@ db_eps: 0.05
 
 # 对比学习温度参数
 temperature: 0.05
-temperature_decay: 0.99
+temperature_decay: 1
 temperature_decay_step: 200
 
 # 硬件/性能配置

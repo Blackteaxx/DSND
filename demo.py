@@ -102,11 +102,11 @@ dtype = torch.bfloat16
 model = Qwen2ModelForSNDPubEmbedding.from_pretrained(
     model_args.model_name_or_path,
     config=model_config,
-    # quantization_config=bnb_config,
+    quantization_config=bnb_config if model_args.enable_quantization else None,
     trust_remote_code=True,
     attn_implementation="flash_attention_2",
     torch_dtype=dtype,
-).to("cuda")
+)
 
 # add special tokens
 if model_args.use_graph:

@@ -200,6 +200,11 @@ class ModelArguments:
         metadata={"help": "Whether to use lora."},
     )
 
+    enable_quantization: bool = field(
+        default=False,
+        metadata={"help": "Whether to enable quantization."},
+    )
+
     lora_module_path: str = field(
         default=None,
         metadata={"help": "The path to the pretrained lora module."},

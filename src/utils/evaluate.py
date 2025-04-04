@@ -40,7 +40,7 @@ CLUSTERING_METHODS = {
         name="DBSCAN",
         estimator=DBSCAN,
         param_grid={
-            "eps": [0.05] + list(np.linspace(0.01, 0.2, 20)),
+            "eps": [0.05] + list(np.linspace(0.01, 0.16, 10)),
             "min_samples": list(range(1, 6)),
         },
     ),

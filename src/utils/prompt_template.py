@@ -79,10 +79,10 @@ def format_paper_for_llm(
     components.append("\nAuthors:")
     components.extend(
         [
-            # f"- {author['name']} ({author['org'].rstrip(', ')})"
-            # for author in paper_dict["authors"]
-            f"- {author['name']}"
+            f"- {author['name']} ({author['org'].rstrip(', ')})"
             for author in paper_dict["authors"]
+            # f"- {author['name']}"
+            # for author in paper_dict["authors"]
         ]
     )
     # components.append("\nAbstract:")
