@@ -41,7 +41,7 @@ class SNDTrainer(Trainer):
         self.last_contrastive_loss = 0.0
         self.last_cluster_loss = 0.0
 
-        self.loss_weight = torch.tensor(0.5, device=self.args.device)
+        self.loss_weight = torch.tensor(self.args.loss_weight, device=self.args.device)
         self.loss_weight.requires_grad = True if self.args.dynamic_weight else False
 
     def compute_loss(self, model, inputs, return_outputs=False, *args, **kwargs):
@@ -105,7 +105,7 @@ class SNDTrainer(Trainer):
             all_hidden.device
         )  # 确保loss_weight在正确的设备上
 
-        loss = loss_weight * contrastive_loss + (1 - loss_weight) * cluster_loss
+        loss = contrastive_loss + loss_weight * cluster_loss
 
         # 不需要额外的梯度同步了，torch.distributed.nn.all_gather会处理
         return (loss, outputs) if return_outputs else loss

@@ -1,13 +1,14 @@
 # 模型相关配置
-model_name_or_path: "/data/name_disambiguation/model/Alibaba-NLP/gte-Qwen2-7B-instruct"
+model_name_or_path: "/data/name_disambiguation/model/Alibaba-NLP/gte-Qwen2-1.5B-instruct"
 padding_side: "left"
 use_graph: false
 use_lora: true
 enable_quantization: true
 dynamic_weight: false
+loss_weight: 2.0
 
 # 数据相关配置
-packing_size: 8
+packing_size: 24
 positive_num: 1
 shuffle: true
 
@@ -21,7 +22,7 @@ eval_steps: 200
 load_best_model_at_end: false
 metric_for_best_model: "avg_f1"
 remove_unused_columns: false
-use_cluster_loss: false
+use_cluster_loss: true
 
 # 优化器相关
 learning_rate: 0.000008
@@ -30,7 +31,7 @@ lr_scheduler_type: "cosine"
 
 # 聚类相关参数
 db_min: 5
-db_eps: 0.05
+db_eps: 0.08
 
 # 对比学习温度参数
 temperature: 0.05

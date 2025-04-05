@@ -2,10 +2,10 @@
 model_name_or_path: "/data/name_disambiguation/model/Alibaba-NLP/gte-Qwen2-7B-instruct"
 padding_side: "left"
 # use_graph: true
-use_lora: false
+use_lora: true
 dynamic_weight: false
 enable_quantization: false
-# lora_module_path: "/data/name_disambiguation/model/7B-Qwen-1Pos-6Pack-0.05Temp-9e-06LR-Shuffled/checkpoint-1000/lora.safetensors"
+lora_module_path: "/data/name_disambiguation/model/7B-Qwen-1Pos-8Pack-0.05Temp-8e-06LR-Shuffled/checkpoint-3800/lora.safetensors"
 # graph_proj_module_path: "/data/name_disambiguation/model/1.5B-Qwen-1Pos-36Pack-0.05Temp-0.99Decay-200DecayStep-1e-05LR-Sequential-Graph/checkpoint-200/graph_proj.safetensors"
 graph_hidden_size: 512
 
@@ -13,7 +13,7 @@ graph_hidden_size: 512
 packing_size: 8
 positive_num: 1
 shuffle: false
-mode: "private"
+mode: "train"
 graph_feature_path: "/data/name_disambiguation/data/SND/pub_graph_embs.safetensors" 
 
 # 训练流程控制

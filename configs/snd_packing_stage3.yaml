@@ -12,6 +12,7 @@ graph_hidden_size: 512
 packing_size: 4
 positive_num: 1
 shuffle: false
+graph_feature_path: "/data/name_disambiguation/data/SND/graph-features/7B-fixed/llm/embeddings-0.safetensors"
 
 # 训练流程控制
 do_predict: false

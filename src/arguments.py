@@ -17,6 +17,7 @@ def generate_snd_run_name(
     use_graph: bool = False,
     dynamic_weight: bool = False,
     use_cluster_loss: bool = True,
+    loss_weight: float = 1.0,
     *args,
     **kwargs,
 ) -> str:
@@ -95,6 +96,7 @@ def generate_snd_run_name(
         components.append("DynamicW")
     if use_cluster_loss:
         components.append("ClusterLoss")
+        components.append("LossWeight" + str(loss_weight))
 
     # 生成最终名称
     return "-".join(components)
@@ -156,7 +158,7 @@ class DataArguments:
     )
 
     graph_feature_path: str = field(
-        default="data/SND/pub_graph_embs.safetensors",
+        default="/data/name_disambiguation/data/SND/graph-features/7B-fixed/llm/embeddings-0.safetensors",
         metadata={
             "help": "The input graph feature path. Should be .safetensors file (or other data files) for the task."
         },
@@ -253,6 +255,11 @@ class SNDTrainingArguments(TrainingArguments):
         metadata={"help": "Whether to shuffle the dataset."},
     )
 
+    loss_weight: float = field(
+        default=1.0,
+        metadata={"help": "The loss weight of the cluster loss."},
+    )
+
     dynamic_weight: bool = field(
         default=False,
         metadata={"help": "Whether to use dynamic weight."},
@@ -262,6 +269,7 @@ class SNDTrainingArguments(TrainingArguments):
         default=True,
         metadata={"help": "Whether to use cluster loss."},
     )
+
 
 @dataclass
 class InferenceArguments:
