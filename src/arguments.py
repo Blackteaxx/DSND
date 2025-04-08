@@ -18,6 +18,7 @@ def generate_snd_run_name(
     dynamic_weight: bool = False,
     use_cluster_loss: bool = True,
     loss_weight: float = 1.0,
+    sentence_pooling_method: str = "last",
     *args,
     **kwargs,
 ) -> str:
@@ -77,6 +78,7 @@ def generate_snd_run_name(
         f"{positive_num if positive_num is not None else 'auto'}Pos",
         f"{packing_size}Pack",
         f"{temperature:.2f}Temp",
+        f"{sentence_pooling_method}Pooling",
     ]
 
     # 添加温度衰减信息（如果不是默认值）
@@ -190,6 +192,11 @@ class ModelArguments:
     padding_side: str = field(
         default="left",
         metadata={"help": "The padding side of the tokenizer."},
+    )
+
+    sentence_pooling_method: str = field(
+        default="last",
+        metadata={"help": "The pooling method for sentence embeddings."},
     )
 
     use_graph: bool = field(

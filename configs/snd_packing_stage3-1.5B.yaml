@@ -1,17 +1,19 @@
 # 模型相关配置
 model_name_or_path: "/data/name_disambiguation/model/Alibaba-NLP/gte-Qwen2-1.5B-instruct"
 padding_side: "left"
-use_graph: false
-use_lora: true
-enable_quantization: true
+use_graph: true
+use_lora: false
+lora_module_path: "/data/name_disambiguation/model/1.5B-Qwen-1Pos-24Pack-0.05Temp-8e-06LR-Shuffled-ClusterLoss-LossWeight2.0/checkpoint-1200/lora.safetensors"
+enable_quantization: false
 dynamic_weight: false
+graph_hidden_size: 512
 loss_weight: 2.0
-sentence_pooling_method: "last"
 
 # 数据相关配置
 packing_size: 24
 positive_num: 1
-shuffle: true
+shuffle: false
+graph_feature_path: "/data/name_disambiguation/data/SND/graph-features/7B-fixed/llm/embeddings-0.safetensors"
 
 # 训练流程控制
 do_predict: false
@@ -26,7 +28,7 @@ remove_unused_columns: false
 use_cluster_loss: true
 
 # 优化器相关
-learning_rate: 0.000004
+learning_rate: 0.0000006
 warmup_ratio: 0.1
 lr_scheduler_type: "cosine"
 

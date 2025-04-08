@@ -3,6 +3,10 @@ from collections import defaultdict
 
 from tqdm import tqdm
 
+from .logger import get_logger
+
+logger = get_logger(__name__)
+
 
 class TripletCollector:
     def __init__(
@@ -13,6 +17,7 @@ class TripletCollector:
         positive_ratio: float = None,
         positive_num: int = None,
         shuffle: bool = True,
+        reuse_pos_samples: bool = False,
         random_seed: int = None,
     ):
         assert positive_ratio is not None or positive_num is not None, (
@@ -28,6 +33,7 @@ class TripletCollector:
         self.positive_num = positive_num
         self.shuffle = shuffle
         self.random_seed = random_seed
+        self.reuse_pos_samples = reuse_pos_samples
 
         # 如果提供了随机种子，设置随机状态以确保可重现性
         if random_seed is not None:
@@ -66,16 +72,19 @@ class TripletCollector:
             working_pubs.sort()  # 确保确定性顺序
 
         # 创建已使用的正样本跟踪
-        used_pos_samples = set() if not self.shuffle else None
+        self.used_pos_samples = set() if not self.reuse_pos_samples else None
 
         # 对每个发布物构建三元组
         for pub in tqdm(working_pubs, desc="Constructing the triplet dataset"):
             label = self.labels[pub]
-            triplet = self._get_triplet(pub, label, used_pos_samples)
+            triplet = self._get_triplet(pub, label)
+            # logger.info(
+            #     f"self.used_pos_samples: {len(self.used_pos_samples)}"
+            # )
             if triplet:  # 只有当能成功创建三元组时才添加
                 self.data.append(triplet)
 
-    def _get_triplet(self, pub, label, used_pos_samples=None):
+    def _get_triplet(self, pub, label):
         """为一个发布物生成三元组
 
         Args:
@@ -86,6 +95,10 @@ class TripletCollector:
         Returns:
             包含查询、正样本和负样本的打包列表
         """
+        if pub in self.used_pos_samples:
+            # 如果pub已经被使用过，直接返回None
+            return None
+
         author = self.pub_to_author[pub]
         packing = [pub]  # 第一个位置固定为query
 
@@ -93,8 +106,10 @@ class TripletCollector:
         same_author_pos = [p for p in self.author_label_map[author][label] if p != pub]
 
         # 如果跟踪已使用样本，则排除它们
-        if used_pos_samples is not None:
-            same_author_pos = [p for p in same_author_pos if p not in used_pos_samples]
+        if self.used_pos_samples is not None:
+            same_author_pos = [
+                p for p in same_author_pos if p not in self.used_pos_samples
+            ]
 
         # 确定要采样的正样本数量
         pos_sampling_num = (
@@ -112,14 +127,18 @@ class TripletCollector:
         selected_pos = random.sample(same_author_pos, pos_sampling_num)
         packing.extend(selected_pos)
 
-        # 如果跟踪已使用样本，将选择的正样本标记为已使用
-        if used_pos_samples is not None:
-            for p in selected_pos:
-                used_pos_samples.add(p)
+        # 将所有作为anchor和pos样本的pub标记为已使用
+        if self.used_pos_samples is not None:
+            for p in packing: 
+                self.used_pos_samples.add(p)
 
         # Level 2: 同作者不同标签负样本
         if len(packing) < self.packing_size:
-            neg_labels = [label_item for label_item in self.author_label_map[author] if label_item != label]
+            neg_labels = [
+                label_item
+                for label_item in self.author_label_map[author]
+                if label_item != label
+            ]
             same_author_neg_pools = []
             for neg_label in neg_labels:
                 same_author_neg_pools.extend(self.author_label_map[author][neg_label])

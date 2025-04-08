@@ -11,6 +11,7 @@ from src.arguments import (
     SpecialToken,
 )
 from src.dataset import SNDInferenceDataset
+from src.inference_agent import InferenceAgent
 from src.modeling import Qwen2ModelForSNDPubEmbedding
 from src.utils.add_special_token import smart_tokenizer_and_embedding_resize
 from src.utils.logger import distributed_logging, get_logger
@@ -40,6 +41,9 @@ config_path = args.config
 data_args, model_args, training_args, infer_args = HfArgumentParser(
     (DataArguments, ModelArguments, SNDTrainingArguments, InferenceArguments)
 ).parse_yaml_file(config_path)
+
+model_path = model_args.model_name_or_path
+inference_embedding_name = model_path.split("/")[-1] + ".safetensors"
 
 
 distributed_logging(
@@ -118,8 +122,6 @@ lora_config = LoraConfig(
 model = get_peft_model(model, lora_config)
 
 
-
-
 # load LoRA weights
 if model_args.lora_module_path:
     module_state_dict = load_file(
@@ -146,93 +148,85 @@ if model_args.graph_proj_module_path:
     )
 
 
-# load dataset
-if infer_args.mode == "train":
-    train_inference_dataset = SNDInferenceDataset(
-        tokenizer=tokenizer,
-        data_args=data_args,
-        mode="train",
-        use_graph=model_args.use_graph,
-    )
-    dev_inference_dataset = SNDInferenceDataset(
-        tokenizer=tokenizer,
-        data_args=data_args,
-        mode="dev",
-        use_graph=model_args.use_graph,
+def main():
+    inference_agent = InferenceAgent(
+        model=model,
+        num_gpus=4,
     )
 
-    embeddings = {}
-    for i in tqdm(range(len(train_inference_dataset)), desc="Train Inferencing."):
-        data = train_inference_dataset[i]
-        pub_ids = data["pub_ids"]
+    # load dataset
+    if infer_args.mode == "train":
+        train_inference_dataset = SNDInferenceDataset(
+            tokenizer=tokenizer,
+            data_args=data_args,
+            mode="train",
+            use_graph=model_args.use_graph,
+        )
+        dev_inference_dataset = SNDInferenceDataset(
+            tokenizer=tokenizer,
+            data_args=data_args,
+            mode="dev",
+            use_graph=model_args.use_graph,
+        )
 
-        for key in data.keys():
-            if isinstance(data[key], torch.Tensor):
-                data[key] = data[key].cuda()
+        packing_sentences = []
+        for i in tqdm(range(len(train_inference_dataset)), desc="Packing sentences."):
+            packing_sentences.append(train_inference_dataset[i])
+        for i in tqdm(range(len(dev_inference_dataset)), desc="Packing sentences."):
+            packing_sentences.append(dev_inference_dataset[i])
 
-        with torch.no_grad():
-            outputs = model(
-                **data,
-            )
+        logger.info("Starting inferencing with train and dev dataset.")
+        results = inference_agent.inference(
+            sentences_dict=packing_sentences,
+            batch_size=1,
+        )
+        embeddings = {}
+        for result in results:
+            pub_ids = result["pub_ids"]
+            sentence_embeddings = result["embeddings"]
+            for i in range(len(pub_ids)):
+                pub_id = pub_ids[i]
+                embeddings[pub_id] = sentence_embeddings[i].cpu()
 
-        pub_embeddings = outputs.embeddings
+        # save embeddings
+        save_file(embeddings, f"data/SND/{inference_embedding_name}")
 
-        for j in range(len(pub_ids)):
-            pub_id = pub_ids[j]
-            embeddings[pub_id] = pub_embeddings[j].cpu()
+    elif infer_args.mode == "private":
+        private_inference_dataset = SNDInferenceDataset(
+            tokenizer=tokenizer,
+            data_args=data_args,
+            mode="private",
+            use_graph=model_args.use_graph,
+        )
 
-    for i in tqdm(range(len(dev_inference_dataset)), desc="Dev Inferencing."):
-        data = dev_inference_dataset[i]
-        pub_ids = data["pub_ids"]
+        embeddings = {}
+        for i in tqdm(
+            range(len(private_inference_dataset)), desc="Private Inferencing."
+        ):
+            data = private_inference_dataset[i]
+            pub_ids = data["pub_ids"]
+            print(f"pub_ids: {pub_ids}")
+            print(f"data: {data}")
+            print("data")
 
-        for key in data.keys():
-            if isinstance(data[key], torch.Tensor):
-                data[key] = data[key].cuda()
+            for key in data.keys():
+                if isinstance(data[key], torch.Tensor):
+                    data[key] = data[key].cuda()
 
-        with torch.no_grad():
-            outputs = model(
-                **data,
-            )
+            with torch.no_grad():
+                outputs = model(
+                    **data,
+                )
 
-        pub_embeddings = outputs.embeddings
+            pub_embeddings = outputs.embeddings
 
-        for j in range(len(pub_ids)):
-            pub_id = pub_ids[j]
-            embeddings[pub_id] = pub_embeddings[j].cpu()
+            for j in range(len(pub_ids)):
+                pub_id = pub_ids[j]
+                embeddings[pub_id] = pub_embeddings[j].cpu()
 
-    # save embeddings
-    save_file(embeddings, "data/SND/inference_embeddings.safetensors")
+        # save embeddings
+        save_file(embeddings, f"data/private/{inference_embedding_name}")
 
-elif infer_args.mode == "private":
-    private_inference_dataset = SNDInferenceDataset(
-        tokenizer=tokenizer,
-        data_args=data_args,
-        mode="private",
-        use_graph=model_args.use_graph,
-    )
 
-    embeddings = {}
-    for i in tqdm(range(len(private_inference_dataset)), desc="Private Inferencing."):
-        data = private_inference_dataset[i]
-        pub_ids = data["pub_ids"]
-        print(f"pub_ids: {pub_ids}")
-        print(f"data: {data}")
-        print(f"data")
-
-        for key in data.keys():
-            if isinstance(data[key], torch.Tensor):
-                data[key] = data[key].cuda()
-
-        with torch.no_grad():
-            outputs = model(
-                **data,
-            )
-
-        pub_embeddings = outputs.embeddings
-
-        for j in range(len(pub_ids)):
-            pub_id = pub_ids[j]
-            embeddings[pub_id] = pub_embeddings[j].cpu()
-
-    # save embeddings
-    save_file(embeddings, "data/private/inference_embeddings.safetensors")
+if __name__ == "__main__":
+    main()

@@ -9,7 +9,7 @@ dynamic_weight: false
 graph_hidden_size: 512
 
 # 数据相关配置
-packing_size: 4
+packing_size: 3
 positive_num: 1
 shuffle: false
 graph_feature_path: "/data/name_disambiguation/data/SND/graph-features/7B-fixed/llm/embeddings-0.safetensors"
@@ -27,7 +27,7 @@ remove_unused_columns: false
 use_cluster_loss: false
 
 # 优化器相关
-learning_rate: 0.000009
+learning_rate: 0.000008
 warmup_ratio: 0.1
 lr_scheduler_type: "cosine"
 

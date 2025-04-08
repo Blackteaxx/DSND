@@ -116,6 +116,7 @@ class SNDPackingDataset(Dataset):
                 positive_ratio=data_args.positive_ratio,
                 positive_num=data_args.positive_num,
                 shuffle=shuffle,
+                reuse_pos_samples=False,
                 random_seed=seed,
             )
             pubs_packing_data = self.sampler.sampling()

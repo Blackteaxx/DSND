@@ -1,16 +1,16 @@
 # 模型相关配置
-model_name_or_path: "/data/name_disambiguation/model/Alibaba-NLP/gte-Qwen2-7B-instruct"
+model_name_or_path: "/data/name_disambiguation/model/Alibaba-NLP/gte-Qwen2-1.5B-instruct"
 padding_side: "left"
 # use_graph: true
 use_lora: true
 dynamic_weight: false
 enable_quantization: false
-lora_module_path: "/data/name_disambiguation/model/7B-Qwen-1Pos-8Pack-0.05Temp-8e-06LR-Shuffled/checkpoint-3800/lora.safetensors"
+lora_module_path: "/data/name_disambiguation/model/1.5B-Qwen-1Pos-24Pack-0.05Temp-8e-06LR-Shuffled-ClusterLoss-LossWeight2.0/checkpoint-1200/lora.safetensors"
 # graph_proj_module_path: "/data/name_disambiguation/model/1.5B-Qwen-1Pos-36Pack-0.05Temp-0.99Decay-200DecayStep-1e-05LR-Sequential-Graph/checkpoint-200/graph_proj.safetensors"
 graph_hidden_size: 512
 
 # 数据相关配置
-packing_size: 8
+packing_size: 32
 positive_num: 1
 shuffle: false
 mode: "train"

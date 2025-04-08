@@ -52,6 +52,11 @@ class Qwen2ModelForSNDPubEmbedding(Qwen2PreTrainedModel):
     def __init__(self, config):
         super().__init__(config)
         self.model_args = config.model_args if hasattr(config, "model_args") else None
+        self.sentence_pooling_method = (
+            config.model_args.sentence_pooling_method
+            if hasattr(config, "model_args")
+            else "last"
+        )
 
         self.model = Qwen2Model(config)
 
@@ -121,15 +126,8 @@ class Qwen2ModelForSNDPubEmbedding(Qwen2PreTrainedModel):
 
         # graph projection
         if self.model_args and self.model_args.use_graph:
-            # logger.info("input_ids: %s", input_ids)
-            # logger.info("graph token id: %s", self.graph_token_id)
             graph_mask = input_ids == self.graph_token_id
 
-            # logger.info(
-            #     f"graph mask sum: {graph_mask.sum()}, graph token id: {self.graph_token_id}"
-            # )
-
-            # convert graph embeddings to the same dtype as the model
             graph_embeddings = (
                 graph_embeddings.to(inputs_embeds.dtype)
                 if graph_embeddings is not None
@@ -155,7 +153,7 @@ class Qwen2ModelForSNDPubEmbedding(Qwen2PreTrainedModel):
         )
 
         last_hidden_states = outputs.last_hidden_state
-        sentence_embeddings = self.last_token_pool(last_hidden_states, attention_mask)
+        sentence_embeddings = self.sentence_embedding(last_hidden_states, attention_mask)
 
         return SNDOutputWithPast(
             past_key_values=outputs.past_key_values,
@@ -163,6 +161,16 @@ class Qwen2ModelForSNDPubEmbedding(Qwen2PreTrainedModel):
             attentions=outputs.attentions,
             embeddings=sentence_embeddings,
         )
+
+    def sentence_embedding(self, last_hidden_state, mask):
+        if self.sentence_pooling_method == "mean":
+            s = torch.sum(last_hidden_state * mask.unsqueeze(-1).float(), dim=1)
+            d = mask.sum(axis=1, keepdim=True).float()
+            return s / d
+        elif self.sentence_pooling_method == "cls":
+            return last_hidden_state[:, 0]
+        elif self.sentence_pooling_method == "last":
+            return self.last_token_pool(last_hidden_state, mask)
 
     # copied from https://huggingface.co/Alibaba-NLP/gte-Qwen2-1.5B-instruct
     def last_token_pool(
