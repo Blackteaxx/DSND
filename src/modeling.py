@@ -153,7 +153,9 @@ class Qwen2ModelForSNDPubEmbedding(Qwen2PreTrainedModel):
         )
 
         last_hidden_states = outputs.last_hidden_state
-        sentence_embeddings = self.sentence_embedding(last_hidden_states, attention_mask)
+        sentence_embeddings = self.sentence_embedding(
+            last_hidden_states, attention_mask
+        )
 
         return SNDOutputWithPast(
             past_key_values=outputs.past_key_values,

@@ -85,7 +85,7 @@ model = Qwen2ModelForSNDPubEmbedding.from_pretrained(
     attn_implementation="flash_attention_2",
     torch_dtype=dtype,
 )
-model.cuda()
+model.cpu()
 model.eval()
 
 # add special tokens
@@ -151,7 +151,6 @@ if model_args.graph_proj_module_path:
 def main():
     inference_agent = InferenceAgent(
         model=model,
-        num_gpus=4,
     )
 
     # load dataset
@@ -176,17 +175,18 @@ def main():
             packing_sentences.append(dev_inference_dataset[i])
 
         logger.info("Starting inferencing with train and dev dataset.")
-        results = inference_agent.inference(
-            sentences_dict=packing_sentences,
-            batch_size=1,
+        results = inference_agent.encode(
+            sentences=packing_sentences,
         )
+        pt_embeddings = results["embeddings"]
+        pub_ids = results["pub_ids"]
         embeddings = {}
-        for result in results:
-            pub_ids = result["pub_ids"]
-            sentence_embeddings = result["embeddings"]
-            for i in range(len(pub_ids)):
-                pub_id = pub_ids[i]
-                embeddings[pub_id] = sentence_embeddings[i].cpu()
+        
+        for i in range(len(pub_ids)):
+            pub_id = pub_ids[i]
+            embedding = pt_embeddings[i]
+            embeddings[pub_id] = embedding.cpu()
+        
 
         # save embeddings
         save_file(embeddings, f"data/SND/{inference_embedding_name}")

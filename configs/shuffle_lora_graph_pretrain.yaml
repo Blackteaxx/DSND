@@ -1,17 +1,18 @@
 # 模型相关配置
 model_name_or_path: "/data/name_disambiguation/model/Alibaba-NLP/gte-Qwen2-1.5B-instruct"
 padding_side: "left"
-use_graph: false
+use_graph: true
 use_lora: true
-enable_quantization: true
+enable_quantization: false
 dynamic_weight: false
+graph_hidden_size: 512
 loss_weight: 2.0
-sentence_pooling_method: "last"
 
 # 数据相关配置
 packing_size: 24
 positive_num: 1
-shuffle: true
+shuffle: false
+graph_feature_path: "/data/name_disambiguation/data/SND/graph-features/7B-fixed/llm/embeddings-0.safetensors"
 
 # 训练流程控制
 do_predict: false

@@ -17,7 +17,7 @@ class TripletCollector:
         positive_ratio: float = None,
         positive_num: int = None,
         shuffle: bool = True,
-        reuse_pos_samples: bool = False,
+        reuse_pos_samples: bool = True,
         random_seed: int = None,
     ):
         assert positive_ratio is not None or positive_num is not None, (
@@ -95,7 +95,7 @@ class TripletCollector:
         Returns:
             包含查询、正样本和负样本的打包列表
         """
-        if pub in self.used_pos_samples:
+        if self.used_pos_samples is not None and pub in self.used_pos_samples:
             # 如果pub已经被使用过，直接返回None
             return None
 

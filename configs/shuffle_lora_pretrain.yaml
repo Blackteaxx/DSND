@@ -1,0 +1,52 @@
+# 模型相关配置
+model_name_or_path: "/data/name_disambiguation/model/Qwen/Qwen2.5-3B-Instruct"
+padding_side: "left"
+use_graph: false
+use_lora: true
+enable_quantization: true
+dynamic_weight: false
+loss_weight: 2.0
+sentence_pooling_method: "last"
+
+# 数据相关配置
+packing_size: 16
+positive_num: 1
+shuffle: true
+
+# 训练流程控制
+do_predict: false
+num_train_epochs: 1
+save_steps: 200
+save_total_limit: 200
+evaluation_strategy: "steps"
+eval_steps: 200
+load_best_model_at_end: false
+metric_for_best_model: "avg_f1"
+remove_unused_columns: false
+use_cluster_loss: true
+
+# 优化器相关
+learning_rate: 0.000004
+warmup_ratio: 0.1
+lr_scheduler_type: "cosine"
+
+# 聚类相关参数
+db_min: 5
+db_eps: 0.1
+
+# 对比学习温度参数
+temperature: 0.05
+temperature_decay: 1
+temperature_decay_step: 200
+
+# 硬件/性能配置
+per_device_train_batch_size: 1
+per_device_eval_batch_size: 1
+gradient_accumulation_steps: 1
+bf16: true
+deepspeed: "/data/name_disambiguation/configs/ds_configs/ds_zero_2.json"
+
+# 日志和输出
+output_dir: "/data/name_disambiguation/model"
+report_to: "wandb"
+logging_steps: 1
