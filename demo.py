@@ -55,6 +55,7 @@ training_args.run_name = generate_snd_run_name(
     shuffle=training_args.shuffle,
     use_graph=model_args.use_graph,
     dynamic_weight=training_args.dynamic_weight,
+    use_contrastive_loss=training_args.use_contrastive_loss,
     use_cluster_loss=training_args.use_cluster_loss,
     loss_weight=training_args.loss_weight,
     sentence_pooling_method=model_args.sentence_pooling_method,

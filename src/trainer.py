@@ -69,9 +69,12 @@ class SNDTrainer(Trainer):
         all_labels = self._dist_gather_tensor(labels)
 
         # 计算对比损失 - 所有设备都计算相同的损失
-        contrastive_loss = self.contrastive_loss(
-            all_hidden, all_labels, self.temperature
-        )
+        if self.args.use_contrastive_loss:
+            contrastive_loss = self.contrastive_loss(
+                all_hidden, all_labels, self.temperature
+            )
+        else:
+            contrastive_loss = torch.tensor(0.0).to(all_hidden.device)
 
         # 聚类损失: 提纯聚类结果
         if self.args.use_cluster_loss:

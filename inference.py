@@ -1,3 +1,4 @@
+import time
 from argparse import ArgumentParser
 
 import torch
@@ -131,6 +132,7 @@ if model_args.lora_module_path:
     # 使用peft加载LoRA权重
     set_peft_model_state_dict(model, module_state_dict)
     logger.info(f"LoRA weights loaded with {len(module_state_dict)} keys.")
+    inference_embedding_name = "lora_" + inference_embedding_name
 
 if model_args.graph_proj_module_path:
     graph_proj_state_dict = load_file(
@@ -146,6 +148,7 @@ if model_args.graph_proj_module_path:
     logger.info(
         f"Graph projection weights loaded with {len(graph_proj_state_dict)} keys, with {len(missing_keys)} missing keys and {len(unexpected_keys)} unexpected keys."
     )
+    inference_embedding_name = "graph_proj_" + inference_embedding_name
 
 
 def main():
@@ -174,22 +177,25 @@ def main():
         for i in tqdm(range(len(dev_inference_dataset)), desc="Packing sentences."):
             packing_sentences.append(dev_inference_dataset[i])
 
+        start_time = time.time()
+
         logger.info("Starting inferencing with train and dev dataset.")
         results = inference_agent.encode(
             sentences=packing_sentences,
         )
+        end_time = time.time()
+        logger.info(f"Time taken for inferencing: {end_time - start_time:.2f} seconds.")
         pt_embeddings = results["embeddings"]
         pub_ids = results["pub_ids"]
         embeddings = {}
-        
+
         for i in range(len(pub_ids)):
             pub_id = pub_ids[i]
             embedding = pt_embeddings[i]
             embeddings[pub_id] = embedding.cpu()
-        
 
         # save embeddings
-        save_file(embeddings, f"data/SND/{inference_embedding_name}")
+        save_file(embeddings, f"data/SND/infer-features/{inference_embedding_name}")
 
     elif infer_args.mode == "private":
         private_inference_dataset = SNDInferenceDataset(

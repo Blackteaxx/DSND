@@ -1,3 +1,4 @@
+import gc
 import math
 import multiprocessing as mp
 import queue
@@ -17,6 +18,7 @@ class InferenceAgent:
     def __init__(self, model: Qwen2ModelForSNDPubEmbedding):
         self.model = model
         self.target_devices = [f"cuda:{i}" for i in range(torch.cuda.device_count())]
+        self.pool = None
 
     def encode(self, sentences):
         """encode sentences into embeddings, with multi-accelerators support
@@ -27,7 +29,7 @@ class InferenceAgent:
         """
         if len(sentences) == 1 or len(self.target_devices) == 1:
             # single accelerator
-            return self._encode_single_accelerator(sentences, self.target_devices[0])
+            return self._encode_single_accelerator(self.model, sentences, self.target_devices[0])
 
         self.pool = self.start_multi_process_pool(
             process_target_func=InferenceAgent._encode_multi_process_worker,
@@ -62,7 +64,6 @@ class InferenceAgent:
             )
         )
 
-        self.model.to("cpu")
         self.model.share_memory()
         ctx = mp.get_context("spawn")
         input_queue = ctx.Queue()
@@ -198,3 +199,42 @@ class InferenceAgent:
             return torch.cat(results_list, dim=0)
         else:
             raise NotImplementedError("Unsupported type for results_list")
+
+    def stop_self_pool(self):
+        if self.pool is not None:
+            self.stop_multi_process_pool(self.pool)
+            self.pool = None
+        try:
+            self.model.to("cpu")
+            torch.cuda.empty_cache()
+        except:  # noqa: E722
+            pass
+        gc.collect()
+
+    def __del__(self):
+        self.stop_self_pool()
+
+    # copied from https://github.com/UKPLab/sentence-transformers/blob/1802076d4eae42ff0a5629e1b04e75785d4e193b/sentence_transformers/SentenceTransformer.py#L857
+    @staticmethod
+    def stop_multi_process_pool(
+        pool: Dict[Literal["input", "output", "processes"], Any],
+    ) -> None:
+        """
+        Stops all processes started with start_multi_process_pool.
+
+        Args:
+            pool (Dict[str, object]): A dictionary containing the input queue, output queue, and process list.
+
+        Returns:
+            None
+        """
+        for p in pool["processes"]:
+            p.terminate()
+
+        for p in pool["processes"]:
+            p.join()
+            p.close()
+
+        pool["input"].close()
+        pool["output"].close()
+        pool = None

@@ -16,6 +16,7 @@ def generate_snd_run_name(
     shuffle: bool = False,
     use_graph: bool = False,
     dynamic_weight: bool = False,
+    use_contrastive_loss: bool = True,
     use_cluster_loss: bool = True,
     loss_weight: float = 1.0,
     sentence_pooling_method: str = "last",
@@ -96,6 +97,8 @@ def generate_snd_run_name(
         components.append("Graph")
     if dynamic_weight:
         components.append("DynamicW")
+    if not use_contrastive_loss:
+        components.append("NoContrastiveLoss")
     if use_cluster_loss:
         components.append("ClusterLoss")
         components.append("LossWeight" + str(loss_weight))
@@ -270,6 +273,11 @@ class SNDTrainingArguments(TrainingArguments):
     dynamic_weight: bool = field(
         default=False,
         metadata={"help": "Whether to use dynamic weight."},
+    )
+
+    use_contrastive_loss: bool = field(
+        default=True,
+        metadata={"help": "Whether to use contrastive loss."},
     )
 
     use_cluster_loss: bool = field(
