@@ -23,8 +23,8 @@ eval_steps: 200
 load_best_model_at_end: false
 metric_for_best_model: "avg_f1"
 remove_unused_columns: false
-use_contrastive_loss: false
-use_cluster_loss: true
+use_contrastive_loss: true
+use_cluster_loss: false
 
 # 优化器相关
 learning_rate: 0.000004
@@ -33,7 +33,7 @@ lr_scheduler_type: "cosine"
 
 # 聚类相关参数
 db_min: 5
-db_eps: 0.1
+db_eps: 0.105
 
 # 对比学习温度参数
 temperature: 0.05
