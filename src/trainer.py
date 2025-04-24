@@ -56,17 +56,22 @@ class SNDTrainer(Trainer):
             )
 
         # 获取嵌入
+        # ?2025-04-15 Test: 使用BGE-M3中划分sub-batch的方法来扩张batch size无法应用在此处，很可能是Deepspeed的原因
         outputs = model(
             **inputs,
         )
         last_hidden_states = outputs.embeddings
         labels = inputs["labels"]
-
+        
         # logger.info(f"embeddings shape: {last_hidden_states.shape}")
-        # logger.info(f"author names: {inputs['author_names']}")
 
         all_hidden = self._dist_gather_tensor(last_hidden_states)
         all_labels = self._dist_gather_tensor(labels)
+        
+        # logger.info(f"all_hidden shape: {all_hidden.shape}")
+        
+        if self.accelerator.is_main_process:
+            logger.info(f"all_labels shape: {all_labels.shape}")
 
         # 计算对比损失 - 所有设备都计算相同的损失
         if self.args.use_contrastive_loss:

@@ -18,6 +18,7 @@ class TripletCollector:
         positive_num: int = None,
         shuffle: bool = True,
         reuse_pos_samples: bool = True,
+        require_neg_samples: bool = True,
         random_seed: int = None,
     ):
         assert positive_ratio is not None or positive_num is not None, (

@@ -294,7 +294,7 @@ def register_hook(model):
 trainer = SNDTrainer(
     model=model,
     args=training_args,
-    data_collator=SNDPackingCollator(),
+    data_collator=SNDPackingCollator(tokenizer=tokenizer),
     train_dataset=train_dataset,
     tokenizer=tokenizer,
     eval_dataset={"eval": eval_dataset, "inference": inference_dataset},

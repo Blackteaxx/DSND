@@ -198,3 +198,5 @@ cython_debug/
 model/
 WhoIsWho_his/
 *.ipynb
+
+bond/*

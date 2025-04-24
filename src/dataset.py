@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from typing import Literal
 
@@ -20,8 +21,48 @@ logger = get_logger(__name__)
 
 
 class SNDPackingCollator:
+    def __init__(self, tokenizer: PreTrainedTokenizer = None):
+        self.tokenizer = tokenizer
+
     def __call__(self, batch):
-        return batch[0]
+        """Collate function for packing dataset.
+
+        Args:
+            batch (list): A list of dictionaries, each containing the features and labels.
+
+        Returns:
+            dict: A dictionary containing the collated features and labels.
+        """
+        collated_batch = {}
+
+        text_features = [
+            text_feature for sample in batch for text_feature in sample["text_features"]
+        ]
+        if self.tokenizer:
+            tokenized_text_features = self.tokenizer(
+                text_features,
+                padding=True,
+                truncation=True,
+                max_length=2048,
+                return_tensors="pt",
+            )
+            for k, v in tokenized_text_features.items():
+                collated_batch[k] = v
+        else:
+            logging.warning(
+                "Tokenizer is not provided. Text features will not be tokenized."
+            )
+
+        for key in batch[0].keys():
+            try:
+                collated_batch[key] = [
+                    value for sample in batch for value in sample[key]
+                ]
+                if isinstance(collated_batch[key][0], torch.Tensor):
+                    collated_batch[key] = torch.stack(collated_batch[key])
+            except Exception as e:
+                logger.warning(f"Error collating key {key}: {e}")
+        return collated_batch
 
 
 class SNDPackingDataset(Dataset):
@@ -117,6 +158,7 @@ class SNDPackingDataset(Dataset):
                 positive_num=data_args.positive_num,
                 shuffle=shuffle,
                 reuse_pos_samples=True,
+                require_neg_samples=True,
                 random_seed=seed,
             )
             pubs_packing_data = self.sampler.sampling()
@@ -151,16 +193,18 @@ class SNDPackingDataset(Dataset):
 
         text_features = [d["text_feature"] for d in data]
 
-        # Tokenize the text features
-        tokenized_text_features = self.tokenizer(
-            text_features,
-            padding=True,
-            truncation=True,
-            max_length=2048,
-            return_tensors="pt",
-        )
-        for k, v in tokenized_text_features.items():
-            batch[k] = v
+        # # Tokenize the text features
+        # tokenized_text_features = self.tokenizer(
+        #     text_features,
+        #     padding=True,
+        #     truncation=True,
+        #     max_length=2048,
+        #     return_tensors="pt",
+        # )
+        # for k, v in tokenized_text_features.items():
+        #     batch[k] = v
+
+        batch["text_features"] = text_features
 
         if self.has_labels:
             labels = [d["label"] for d in data]

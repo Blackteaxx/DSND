@@ -11,10 +11,10 @@ enable_quantization: false
 graph_hidden_size: 512
 
 # 数据相关配置
-packing_size: 8
+packing_size: 2
 positive_num: 1
 shuffle: false
-mode: "train"
+mode: "private"
 graph_feature_path: "/data/name_disambiguation/data/SND/pub_graph_embs.safetensors" 
 
 # 训练流程控制
