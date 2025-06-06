@@ -1,6 +1,6 @@
 # export WANDB_PROJECT=SNDAuthorPacking
 
-# wandb login c37834adb2ff077abccb08740f0637503fd50661
+# wandb login YOUR_API_KEY
 # wandb online   
 # wandb enabled
 export WANDB_MODE=disabled
